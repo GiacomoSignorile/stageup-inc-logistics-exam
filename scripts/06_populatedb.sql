@@ -73,7 +73,7 @@ BEGIN
         -- Create ContactInfo
         v_contact_info := ContactInfo(
             v_phone_list,
-            'dept' || i || '@medtech.com',
+            'dept' || i || '@stageup.com',
             'fax' || LPAD(i, 2, '0') || '00'
         );
 

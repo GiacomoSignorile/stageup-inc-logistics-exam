@@ -22,8 +22,8 @@ This repository provides a complete Oracle object-relational logistics system wi
 
 1. Clone the repository:
     ```bash
-  git clone https://github.com/<your-username>/medtech-logistics-exam.git
-  cd medtech-logistics-exam
+  git clone https://github.com/<your-username>/stageup-inc-logistics-exam.git
+  cd stageup-inc-logistics-exam
     ```
 2. Create your local environment file:
   ```bash
@@ -49,7 +49,7 @@ This repository provides a complete Oracle object-relational logistics system wi
 
 ## Object-Relational Schema (Version 1)
 
-Below is the first version of the object-relational schema for the MedTech Logistics database. This schema illustrates the initial design of entities, relationships, and object types used to model the logistics operations.
+Below is the first version of the object-relational schema for the StageUp Inc Logistics database. This schema illustrates the initial design of entities, relationships, and object types used to model the logistics operations.
 
 - Entity and relationship definitions
 - Object types and inheritance structures
@@ -57,7 +57,7 @@ Below is the first version of the object-relational schema for the MedTech Logis
 
 Refer to the diagram below for a visual representation.
 
-![MedTech Logistics Schema (Version 1)](images/ver1.drawio.png)
+![StageUp Inc Logistics Schema (Version 1)](images/ver1.drawio.png)
 
 ## Object-Relational Schema (Version 2)
 
@@ -68,13 +68,13 @@ The second version of the schema reflects improvements and refinements based on 
 - Improved constraints and referential integrity
 
 See the diagram below for the updated schema.
-![MedTech Logistics Schema (Version 2)](images/ver2.drawio.png)
+![StageUp Inc Logistics Schema (Version 2)](images/ver2.drawio.png)
 
 ## Implemented Database Objects
 
 ### Object Types
 
-The MedTech Logistics database uses Oracle object-relational features with the following custom types:
+The StageUp Inc Logistics database uses Oracle object-relational features with the following custom types:
 
 - `Location`: Represents a physical address (city, street, street number, zip code).
 - `Product_t`: Represents a product with serial number, category, and expiry date.
@@ -154,7 +154,7 @@ Below is a screenshot of the Streamlit demo application's home page:
 To access the demo application, use credentials defined in your `.env` file:
 
 - `SYS_DB_USER` / `SYS_DB_PASSWORD` for the user list lookup
-- Schema user password (for example `MEDTECHDBA_PWD`) for app login
+- Schema user password (for example `STAGEUPDBA_PWD`) for app login
 
 > **Tip:** If the current date from the database is displayed correctly in the demo app, your connection to the Oracle 21c database is working as expected.
 

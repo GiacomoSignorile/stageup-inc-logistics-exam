@@ -3,9 +3,10 @@ import streamlit as st
 import pandas as pd
 import oracledb
 import db_utils # Import your database utility functions
+from app_config import TABLES_PAGE_TITLE
 
 
-st.title("🗄️ MedTech Logistic Tables Overview")
+st.title(f"🗄️ {TABLES_PAGE_TITLE}")
 
 
 def products():

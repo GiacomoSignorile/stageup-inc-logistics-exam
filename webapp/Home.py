@@ -1,10 +1,11 @@
 # webapp/app.py
 import streamlit as st
 import db_utils # Import your database utility functions
+from app_config import APP_SUBTITLE, APP_TITLE
 
 
-st.title("📦 MedTech Supply Chain Management")
-st.markdown("Welcome to the MedTech Supply Chain Database Viewer.")
+st.title(f"📦 {APP_TITLE}")
+st.markdown(APP_SUBTITLE)
 
 if db_utils.st.session_state.logged_in_user:
     st.success(f"You are logged in as: **`{db_utils.st.session_state.logged_in_user}`**")
