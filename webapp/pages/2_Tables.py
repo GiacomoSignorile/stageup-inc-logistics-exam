@@ -34,12 +34,14 @@ else:
                 connection,
                 "Office_TAB",
                 """
-                SELECT Name, OfficeType, NoEmployees,
-                       Location.City AS City,
-                       Location.Street AS Street,
-                       Location.ZipCode AS ZipCode
-                FROM Office_TAB
-                ORDER BY Name
+                  SELECT o.Name,
+                      o.OfficeType,
+                      o.NoEmployees,
+                      o.Location.City AS City,
+                      o.Location.Street AS Street,
+                      o.Location.ZipCode AS ZipCode
+                  FROM Office_TAB o
+                  ORDER BY o.Name
                 """,
             )
 
