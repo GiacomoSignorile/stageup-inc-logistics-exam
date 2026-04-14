@@ -1,5 +1,5 @@
-"""Centralized branding values for quick exam-topic renaming."""
+"""Centralized branding values for the StageUp event setup exam app."""
 
-APP_TITLE = "StageUp Inc Supply Chain Management"
-APP_SUBTITLE = "Welcome to the StageUp Inc logistics database viewer."
-TABLES_PAGE_TITLE = "StageUp Inc Logistics Tables Overview"
+APP_TITLE = "StageUp Event Setup Management"
+APP_SUBTITLE = "Welcome to the StageUp object-relational database viewer."
+TABLES_PAGE_TITLE = "StageUp Event Setup Tables Overview"

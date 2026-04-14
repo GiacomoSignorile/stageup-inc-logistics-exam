@@ -1,682 +1,484 @@
--- DROP SEQUENCE person_tax_code_seq;
--- DROP SEQUENCE customer_id_seq;
--- DROP SEQUENCE department_id_seq;
--- DROP SEQUENCE product_serial_seq;
--- DROP SEQUENCE product_batch_id_seq;
--- DROP SEQUENCE logistic_team_id_seq;
--- DROP SEQUENCE batch_order_id_seq;
--- DROP SEQUENCE complaint_ticket_id_seq;
--- DROP SEQUENCE distribution_center_id_seq;
+-- ============================================================================
+-- STAGEUP EVENT SETUP - POPULATION SCRIPT (NEW SCHEMA)
+-- ============================================================================
+-- This script populates the new event booking management schema:
+-- Offices, Teams, Customers, Locations, Equipment, and Bookings
+-- 
+-- Data volumes: Medium (50-100 records per table)
+-- Relationships: Fully referentially integrated
+-- Team sizes: Variable 1-10 members per team
+-- Booking dates: Mix of past, present, and future
+-- ============================================================================
 
-CREATE SEQUENCE person_tax_code_seq START WITH 1 INCREMENT BY 1 NOCACHE;
-CREATE SEQUENCE customer_id_seq START WITH 1 INCREMENT BY 1 NOCACHE;
-CREATE SEQUENCE department_id_seq START WITH 1 INCREMENT BY 1 NOCACHE;
-CREATE SEQUENCE product_serial_seq START WITH 1 INCREMENT BY 1 NOCACHE;
-CREATE SEQUENCE product_batch_id_seq START WITH 1 INCREMENT BY 1 NOCACHE;
-CREATE SEQUENCE logistic_team_id_seq START WITH 1 INCREMENT BY 1 NOCACHE;
-CREATE SEQUENCE batch_order_id_seq START WITH 1 INCREMENT BY 1 NOCACHE;
-CREATE SEQUENCE complaint_ticket_id_seq START WITH 1 INCREMENT BY 1 NOCACHE;
-CREATE SEQUENCE distribution_center_id_seq START WITH 1 INCREMENT BY 1 NOCACHE;
-
-DECLARE
-    v_product_serial VARCHAR2(10);
+-- DROP old sequences if they exist
 BEGIN
-    DBMS_OUTPUT.PUT_LINE('--- Populating Product Table ---');
-
-    FOR i IN 1..50 LOOP -- Insert 50 sample products
-        v_product_serial := LPAD(i, 3, '0'); -- Generates PROD-001, PROD-002, etc.
-
-        -- 10% of products will be expired (expiry date in the past)
-        INSERT INTO Product (SerialNo, ProductCategory, ExpiryDate)
-        VALUES (
-            v_product_serial,
-            CASE
-                WHEN MOD(i, 3) = 0 THEN 'Medical Equipment'
-                WHEN MOD(i, 3) = 1 THEN 'Supplies'
-                ELSE 'Consumables'
-            END,
-            CASE
-                WHEN MOD(i, 10) = 0 THEN SYSDATE - DBMS_RANDOM.VALUE(1, 365) -- Expired within last year
-                ELSE SYSDATE + (DBMS_RANDOM.VALUE(1, 365) * 5) -- Expires randomly within the next 5 years
-            END
-        );
-    END LOOP;
-
-    COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully populated 50 products into the Product table.');
-
+  EXECUTE IMMEDIATE 'DROP SEQUENCE team_code_seq';
 EXCEPTION
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error populating Product table: ' || SQLERRM);
+  WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+  EXECUTE IMMEDIATE 'DROP SEQUENCE customer_code_seq';
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+  EXECUTE IMMEDIATE 'DROP SEQUENCE location_code_seq';
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+  EXECUTE IMMEDIATE 'DROP SEQUENCE booking_id_seq';
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+  EXECUTE IMMEDIATE 'DROP SEQUENCE equipment_code_seq';
+EXCEPTION
+  WHEN OTHERS THEN NULL;
 END;
 /
 
+-- CREATE new sequences
+CREATE SEQUENCE team_code_seq START WITH 1 INCREMENT BY 1 NOCACHE;
+CREATE SEQUENCE customer_code_seq START WITH 1 INCREMENT BY 1 NOCACHE;
+CREATE SEQUENCE location_code_seq START WITH 1 INCREMENT BY 1 NOCACHE;
+CREATE SEQUENCE booking_id_seq START WITH 1 INCREMENT BY 1 NOCACHE;
+CREATE SEQUENCE equipment_code_seq START WITH 1 INCREMENT BY 1 NOCACHE;
+
+
+/
+
+-- ============================================================================
+-- PHASE 1: POPULATE OFFICE_TAB
+-- ============================================================================
 DECLARE
-    v_department_id NUMBER;
-    v_contact_info  ContactInfo;
-    v_phone_list    PhoneList;
-    v_product_ref   REF Product_t;
-    v_preferences_list PreferencesList;
+    v_office_id     NUMBER;
+    v_address       Address_t;
+    v_cities        DBMS_SQL.varchar2_table;
+    v_office_types  DBMS_SQL.varchar2_table;
 BEGIN
-    DBMS_OUTPUT.PUT_LINE('--- Populating Department Table ---');
-
-    FOR i IN 1..10 LOOP -- Insert 10 sample departments
-        v_department_id := department_id_seq.NEXTVAL;
-
-        -- Create PhoneList
-        v_phone_list := PhoneList(
-            TO_NUMBER('111222' || LPAD(i, 3, '0')), -- Mobile number
-            TO_NUMBER('333444' || LPAD(i, 3, '0'))  -- Office number
+    DBMS_OUTPUT.PUT_LINE('--- Populating Office_TAB ---');
+    
+    -- Sample city names
+    v_cities(1) := 'New York'; v_cities(2) := 'Los Angeles'; v_cities(3) := 'Chicago';
+    v_cities(4) := 'Houston'; v_cities(5) := 'Phoenix'; v_cities(6) := 'Boston';
+    v_cities(7) := 'Miami'; v_cities(8) := 'Seattle'; v_cities(9) := 'Denver';
+    v_cities(10) := 'Dallas';
+    
+    -- Office types
+    v_office_types(1) := 'Central';
+    v_office_types(2) := 'Depot';
+    
+    FOR i IN 1..15 LOOP
+        v_address := Address_t(
+            Street => 'Main Street',
+            StreetNo => TO_CHAR(MOD(i*15, 999) + 1),
+            ZipCode => 10000 + MOD(i*1000, 89999),
+            City => v_cities(MOD(i, 10) + 1),
+            Province => CASE WHEN MOD(i, 3) = 0 THEN 'NY' WHEN MOD(i, 3) = 1 THEN 'CA' ELSE 'TX' END
         );
-
-        -- Create ContactInfo
-        v_contact_info := ContactInfo(
-            v_phone_list,
-            'dept' || i || '@stageup.com',
-            'fax' || LPAD(i, 2, '0') || '00'
-        );
-
-        -- Populate SupplyPreferences (NESTED TABLE)
-        v_preferences_list := PreferencesList(); -- Initialize the nested table
-
-        FOR j IN 1..DBMS_RANDOM.VALUE(5, 15) LOOP -- Each department has 5-15 preferred products
-            SELECT REF(p) INTO v_product_ref
-            FROM Product p
-            ORDER BY DBMS_RANDOM.VALUE
-            FETCH FIRST 1 ROW ONLY;
-
-            v_preferences_list.EXTEND;
-            v_preferences_list(v_preferences_list.LAST) := v_product_ref;
-        END LOOP;
-
-        INSERT INTO Department (DepartmentID, DeptContact, SupplyPreferences)
+        
+        INSERT INTO Office_TAB (Name, Location, NoEmployees, OfficeType)
         VALUES (
-            v_department_id,
-            v_contact_info,
-            v_preferences_list
+            'Office_' || LPAD(i, 3, '0'),
+            v_address,
+            TRUNC(DBMS_RANDOM.VALUE(10, 100)),
+            v_office_types(CASE WHEN i <= 5 THEN 1 ELSE 2 END) -- First 5 are Central, rest are Depots
         );
     END LOOP;
-
+    
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully populated 10 departments into the Department table.');
-
+    DBMS_OUTPUT.PUT_LINE('Successfully populated 15 offices into Office_TAB.');
+    
 EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error: No products found to add to SupplyPreferences. Ensure Product table is populated: ' || SQLERRM);
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error populating Department table: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('Error populating Office_TAB: ' || SQLERRM);
 END;
 /
 
+-- ============================================================================
+-- PHASE 2: POPULATE EQUIPMENT_TAB
+-- ============================================================================
 DECLARE
-    v_customer_code    VARCHAR2(10);
-    v_location         Location;
-    v_department_ref   REF Department_t;
-    v_department_list  DepartmentList;
+    v_equipment_id  NUMBER;
+    v_equipment     DBMS_SQL.varchar2_table;
 BEGIN
-    DBMS_OUTPUT.PUT_LINE('--- Populating Customer Table ---');
-
-    FOR i IN 1..50 LOOP -- Populating 50 sample customers
-        v_customer_code := 'CUST' || LPAD(customer_id_seq.NEXTVAL, 3, '0');
-
-        -- Create a sample Location object
-        v_location := Location(
-            'City ' || MOD(i, 10),
-            'Street ' || i,
-            TO_CHAR(MOD(i, 100) + 1), -- Street number
-            MOD(i * 100 + 10000, 99999) + 1 -- 5-digit zip code
+    DBMS_OUTPUT.PUT_LINE('--- Populating Equipment_TAB ---');
+    
+    -- Sample equipment types
+    v_equipment(1) := 'Sound System';
+    v_equipment(2) := 'Lighting Rig';
+    v_equipment(3) := 'Projection Screen';
+    v_equipment(4) := 'Microphone';
+    v_equipment(5) := 'Speaker Box';
+    v_equipment(6) := 'Mixing Console';
+    v_equipment(7) := 'Folding Table';
+    v_equipment(8) := 'Folding Chair';
+    v_equipment(9) := 'Stage Platform';
+    v_equipment(10) := 'Camera Stand';
+    
+    FOR i IN 1..25 LOOP
+        v_equipment_id := equipment_code_seq.NEXTVAL;
+        
+        INSERT INTO Equipment_TAB (ItemCode, Description, UnitsAvailable)
+        VALUES (
+            v_equipment_id,
+            v_equipment(MOD(i, 10) + 1) || ' Model-' || LPAD(i, 3, '0'),
+            TRUNC(DBMS_RANDOM.VALUE(5, 100))
         );
+    END LOOP;
+    
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Successfully populated 25 equipment types into Equipment_TAB.');
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('Error populating Equipment_TAB: ' || SQLERRM);
+END;
+/
 
-        -- Populate BelongsToDepts (NESTED TABLE)
-        v_department_list := DepartmentList(); -- Initialize the nested table
-
-        FOR j IN 1..DBMS_RANDOM.VALUE(1, 3) LOOP -- Each customer belongs to 1-3 departments
-            -- Get a random department REF
-            SELECT REF(d) INTO v_department_ref
-            FROM Department d
-            ORDER BY DBMS_RANDOM.VALUE
-            FETCH FIRST 1 ROW ONLY;
-
-            -- Add to the nested table
-            v_department_list.EXTEND;
-            v_department_list(v_department_list.LAST) := v_department_ref;
-        END LOOP;
-
-        INSERT INTO Customer (CustomerCode, CustomerLocation, BelongsToDepts)
+-- ============================================================================
+-- PHASE 3: POPULATE CUSTOMER_TAB
+-- ============================================================================
+DECLARE
+    v_customer_code VARCHAR2(10);
+    v_customer_type VARCHAR2(15);
+    v_first_names   DBMS_SQL.varchar2_table;
+    v_last_names    DBMS_SQL.varchar2_table;
+    v_domains       DBMS_SQL.varchar2_table;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('--- Populating Customer_TAB ---');
+    
+    -- Sample names for variety
+    v_first_names(1) := 'John'; v_first_names(2) := 'Jane'; v_first_names(3) := 'Robert';
+    v_first_names(4) := 'Patricia'; v_first_names(5) := 'Michael'; v_first_names(6) := 'Jennifer';
+    v_first_names(7) := 'David'; v_first_names(8) := 'Linda'; v_first_names(9) := 'James';
+    v_first_names(10) := 'Barbara';
+    
+    v_last_names(1) := 'Smith'; v_last_names(2) := 'Johnson'; v_last_names(3) := 'Williams';
+    v_last_names(4) := 'Brown'; v_last_names(5) := 'Jones'; v_last_names(6) := 'Garcia';
+    v_last_names(7) := 'Miller'; v_last_names(8) := 'Davis'; v_last_names(9) := 'Rodriguez';
+    v_last_names(10) := 'Martinez';
+    
+    v_domains(1) := 'gmail.com'; v_domains(2) := 'yahoo.com'; v_domains(3) := 'outlook.com';
+    v_domains(4) := 'company.com'; v_domains(5) := 'mail.com'; v_domains(6) := 'events.com';
+    
+    FOR i IN 1..60 LOOP
+        v_customer_code := 'CUST' || LPAD(customer_code_seq.NEXTVAL, 5, '0');
+        
+        -- 40% Individual, 60% Company
+        IF MOD(i, 5) = 0 THEN
+            v_customer_type := 'Individual';
+        ELSE
+            v_customer_type := 'Company';
+        END IF;
+        
+        INSERT INTO Customer_TAB (CustomerCode, Email, CustomerType)
         VALUES (
             v_customer_code,
-            v_location,
-            v_department_list
+            LOWER(v_first_names(MOD(i, 10) + 1) || '.' || v_last_names(MOD(i+5, 10) + 1) || 
+                  '@' || v_domains(MOD(i, 6) + 1)),
+            v_customer_type
         );
     END LOOP;
-
+    
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully populated 50 customers into the Customer table.');
-
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error: Not enough departments found to link customers to. Please ensure the Department table is populated: ' || SQLERRM);
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error populating Customer table: ' || SQLERRM);
-END;
-/
-
-DECLARE
-    v_tax_code       NUMBER;
-    v_birth_date     DATE;
-    v_employment_date DATE;
-    v_age_years      NUMBER;
-    v_years_employed NUMBER;
-BEGIN
-    DBMS_OUTPUT.PUT_LINE('--- Populating TeamMember Table ---');
-
-    FOR i IN 1..100 LOOP -- Populating 100 sample team members
-        v_tax_code := person_tax_code_seq.NEXTVAL;
-
-        -- Generate realistic birth and employment dates:
-        -- Member is between 25 and 60 years old
-        v_age_years := ROUND(DBMS_RANDOM.VALUE(25, 60));
-        v_birth_date := ADD_MONTHS(TRUNC(SYSDATE), -(v_age_years * 12 + ROUND(DBMS_RANDOM.VALUE(0, 11))));
-
-        -- Employment date is after birth date, and not in the future.
-        -- Employed for 1 to (v_age_years - 20) years (to ensure they are at least 20 when employed)
-        v_years_employed := ROUND(DBMS_RANDOM.VALUE(1, LEAST(v_age_years - 20, 30))); -- Max 30 years employed
-        v_employment_date := ADD_MONTHS(TRUNC(SYSDATE), -(v_years_employed * 12 + ROUND(DBMS_RANDOM.VALUE(0, 11))));
-
-        -- Ensure employment date is not in the future
-        IF v_employment_date > TRUNC(SYSDATE) THEN
-            v_employment_date := TRUNC(SYSDATE) - DBMS_RANDOM.VALUE(0, 30); -- If somehow future, adjust to recent past
-        END IF;
-
-        -- Ensure employment date is after birth date
-        IF v_employment_date < v_birth_date THEN
-            v_employment_date := v_birth_date + ROUND(DBMS_RANDOM.VALUE(18 * 365, 25 * 365)); -- At least 18-25 years after birth
-            IF v_employment_date > TRUNC(SYSDATE) THEN
-                v_employment_date := TRUNC(SYSDATE) - DBMS_RANDOM.VALUE(0, 30); -- Still not in future
-            END IF;
-        END IF;
-
-        INSERT INTO TeamMember (TaxCode, MemberName, MemberSurname, BirthDate, EmploymentDate)
-        VALUES (
-            v_tax_code,
-            'MemberName' || LPAD(i, 3, '0'),
-            'Surname' || LPAD(i, 3, '0'),
-            v_birth_date,
-            v_employment_date
-        );
-    END LOOP;
-
-    COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully populated 100 team members into the TeamMember table.');
-
+    DBMS_OUTPUT.PUT_LINE('Successfully populated 60 customers into Customer_TAB.');
+    
 EXCEPTION
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error populating TeamMember table: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('Error populating Customer_TAB: ' || SQLERRM);
 END;
 /
 
+-- ============================================================================
+-- PHASE 4: POPULATE TEAM_TAB (with Member_VA members)
+-- ============================================================================
 DECLARE
-    v_chief_tax_code     NUMBER;
-    v_employment_date    DATE;
-    v_start_date         DATE;
-    v_rows_processed     NUMBER := 0;
-
-    -- Cursor to select existing TeamMembers who are NOT yet ChiefOfficers
-    CURSOR c_eligible_members IS
-        SELECT tm.TaxCode, tm.EmploymentDate
-        FROM TeamMember tm
-        WHERE NOT EXISTS (SELECT 1 FROM ChiefOfficier co WHERE co.TaxCode = tm.TaxCode)
-        ORDER BY DBMS_RANDOM.VALUE; -- Pick random members
+    v_team_code     NUMBER;
+    v_team_name     VARCHAR2(30);
+    v_members       Member_VA;
+    v_member        Member_t;
+    v_tax_code      CHAR(16);
+    v_first_names   DBMS_SQL.varchar2_table;
+    v_last_names    DBMS_SQL.varchar2_table;
+    v_num_members   NUMBER;
+    v_birth_date    DATE;
 BEGIN
-    DBMS_OUTPUT.PUT_LINE('--- Populating ChiefOfficier Table ---');
-
-    OPEN c_eligible_members;
-    LOOP
-        FETCH c_eligible_members INTO v_chief_tax_code, v_employment_date;
-        EXIT WHEN c_eligible_members%NOTFOUND OR v_rows_processed >= 25; -- Stop after 25 chiefs
-
-        -- Generate StartDate for ChiefOfficier:
-        -- Must be after EmploymentDate and not in the future.
-        -- Let's say, 1 to 10 years after employment date, but not after today.
-        v_start_date := v_employment_date + (DBMS_RANDOM.VALUE(1, 10) * 365); -- Add 1-10 years
-
-        -- Ensure StartDate is not in the future
-        IF v_start_date > TRUNC(SYSDATE) THEN
-            v_start_date := TRUNC(SYSDATE) - DBMS_RANDOM.VALUE(0, 365); -- If future, set to recent past
-            -- Make sure it's still after employment_date in case of very new employees
-            IF v_start_date < v_employment_date THEN
-                v_start_date := v_employment_date + DBMS_RANDOM.VALUE(1, 30); -- At least a few days after employment
-            END IF;
-        END IF;
-
-        INSERT INTO ChiefOfficier (TaxCode, StartDate)
-        VALUES (v_chief_tax_code, v_start_date);
-
-        v_rows_processed := v_rows_processed + 1;
-    END LOOP;
-    CLOSE c_eligible_members;
-
-    COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully populated ' || v_rows_processed || ' chief officers into the ChiefOfficier table.');
-
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error: No eligible team members found to promote to Chief Officer. Ensure TeamMember table is populated: ' || SQLERRM);
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error populating ChiefOfficier table: ' || SQLERRM);
-END;
-/
-
-DECLARE
-    v_team_code         NUMBER;
-    v_chief_ref         REF ChiefOfficier_t;
-    v_team_member_ref   REF TeamMember_t;
-    v_team_members_list MemberList; -- Type name as per your DDL
-    v_chief_tax_code    ChiefOfficier.TaxCode%TYPE;
-    v_member_tax_code   TeamMember.TaxCode%TYPE;
-    v_rows_processed    NUMBER := 0;
-
-    -- Cursor to select available chief officers (not already assigned as chief to a team)
-    CURSOR c_available_chiefs IS
-        SELECT co.TaxCode
-        FROM ChiefOfficier co
-        WHERE NOT EXISTS (
-            SELECT 1 FROM LogisticTeam lt
-            WHERE lt.TeamChief = REF(co)
-        )
-        ORDER BY DBMS_RANDOM.VALUE;
-
-    -- Cursor to select available team members (not chief officers, not already in this team)
-    CURSOR c_available_members IS
-        SELECT tm.TaxCode
-        FROM TeamMember tm
-        WHERE NOT EXISTS (SELECT 1 FROM ChiefOfficier co WHERE co.TaxCode = tm.TaxCode) -- Ensure not a chief
-        ORDER BY DBMS_RANDOM.VALUE;
-BEGIN
-    DBMS_OUTPUT.PUT_LINE('--- Populating LogisticTeam Table ---');
-
-    OPEN c_available_chiefs;
-    FOR i IN 1..15 LOOP -- Attempt to create up to 15 teams
-        FETCH c_available_chiefs INTO v_chief_tax_code;
-        EXIT WHEN c_available_chiefs%NOTFOUND; -- Stop if no more chiefs available
-
-        v_team_code := logistic_team_id_seq.NEXTVAL;
-
-        -- Get the REF for the chosen chief
-        SELECT REF(co) INTO v_chief_ref FROM ChiefOfficier co WHERE co.TaxCode = v_chief_tax_code;
-
-        -- Populate TeamMembers (NESTED TABLE)
-        v_team_members_list := MemberList(); -- Initialize the nested table
-
-        OPEN c_available_members;
-        FOR j IN 1..DBMS_RANDOM.VALUE(3, 7) LOOP -- Each team has 3-7 members
-            FETCH c_available_members INTO v_member_tax_code;
-            EXIT WHEN c_available_members%NOTFOUND;
-
-            -- Get the REF for the chosen team member
-            SELECT REF(tm) INTO v_team_member_ref FROM TeamMember tm WHERE tm.TaxCode = v_member_tax_code;
-
-            -- Add to the nested table
-            v_team_members_list.EXTEND;
-            v_team_members_list(v_team_members_list.LAST) := v_team_member_ref;
+    DBMS_OUTPUT.PUT_LINE('--- Populating Team_TAB ---');
+    
+    v_first_names(1) := 'Alice'; v_first_names(2) := 'Bob'; v_first_names(3) := 'Charlie';
+    v_first_names(4) := 'Diana'; v_first_names(5) := 'Edward'; v_first_names(6) := 'Fiona';
+    v_first_names(7) := 'George'; v_first_names(8) := 'Hannah'; v_first_names(9) := 'Isaac';
+    v_first_names(10) := 'Julia';
+    
+    v_last_names(1) := 'Anderson'; v_last_names(2) := 'Baker'; v_last_names(3) := 'Clark';
+    v_last_names(4) := 'Davis'; v_last_names(5) := 'Evans'; v_last_names(6) := 'Foster';
+    v_last_names(7) := 'Green'; v_last_names(8) := 'Harris'; v_last_names(9) := 'Irving';
+    v_last_names(10) := 'Jackson';
+    
+    FOR i IN 1..12 LOOP
+        v_team_code := team_code_seq.NEXTVAL;
+        v_team_name := 'Team_' || LPAD(v_team_code, 3, '0');
+        v_members := Member_VA(); -- Initialize empty VARRAY
+        
+        -- Random team size: 1-10 members
+        v_num_members := TRUNC(DBMS_RANDOM.VALUE(1, 10.99));
+        
+        FOR j IN 1..v_num_members LOOP
+            -- Generate random 16-char tax code
+            v_tax_code := CHR(65 + MOD(v_team_code*j, 26)) || 
+                         CHR(65 + MOD(v_team_code+j, 26)) ||
+                         LPAD(TRUNC(DBMS_RANDOM.VALUE(1000000, 9999999)), 7, '0') ||
+                         LPAD(TRUNC(DBMS_RANDOM.VALUE(100000, 999999)), 6, '0');
+            
+            -- Random birth date: 25-65 years old
+            v_birth_date := TRUNC(SYSDATE) - (365 * (25 + TRUNC(DBMS_RANDOM.VALUE(0, 40.99))));
+            
+            v_member := Member_t(
+                TaxCode => v_tax_code,
+                FirstName => v_first_names(MOD(j + v_team_code, 10) + 1),
+                LastName => v_last_names(MOD(j, 10) + 1),
+                BirthDate => v_birth_date
+            );
+            
+            v_members.EXTEND;
+            v_members(v_members.LAST) := v_member;
         END LOOP;
-        CLOSE c_available_members;
-
-        -- If a team has no members
-        IF v_team_members_list IS NULL OR v_team_members_list.COUNT = 0 THEN
-            -- Skip this team or handle as an error
-            DBMS_OUTPUT.PUT_LINE('Warning: Skipping Team ' || v_team_code || ' as no members could be assigned.');
-            CONTINUE;
-        END IF;
-
-        INSERT INTO LogisticTeam (TeamCode, TeamName, TeamChief, TeamMembers, CompletedDeliveries)
+        
+        INSERT INTO Team_TAB (TeamCode, TeamName, NoInstallations, Members)
         VALUES (
             v_team_code,
-            'LogTeam ' || LPAD(v_team_code, 2, '0'),
-            v_chief_ref,
-            v_team_members_list,
-            DBMS_RANDOM.VALUE(0, 50) -- Random number of completed deliveries
+            v_team_name,
+            0,
+            v_members
         );
-        v_rows_processed := v_rows_processed + 1;
     END LOOP;
-    CLOSE c_available_chiefs;
-
+    
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully populated ' || v_rows_processed || ' logistic teams into the LogisticTeam table.');
-
+    DBMS_OUTPUT.PUT_LINE('Successfully populated 12 teams with variable member counts (1-10) into Team_TAB.');
+    
 EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error: Not enough chief officers or team members found. Ensure ChiefOfficier and TeamMember tables are populated: ' || SQLERRM);
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error populating LogisticTeam table: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('Error populating Team_TAB: ' || SQLERRM);
 END;
 /
 
+-- ============================================================================
+-- PHASE 5: POPULATE LOCATION_TAB (referencing Customer_TAB)
+-- ============================================================================
 DECLARE
-    v_center_name       VARCHAR2(30);
-    v_location          Location;
-    v_logistic_team_ref REF LogisticTeam_t;
-    v_product_ref       REF Product_t;
-    v_product_list      ProductList;
-    v_team_code         LogisticTeam.TeamCode%TYPE;
+    v_location_code   VARCHAR2(10);
+    v_address         Address_t;
+    v_customer_ref    REF Customer_t;
+    v_customer_code   Customer_TAB.CustomerCode%TYPE;
+    v_setup_time      NUMBER;
+    v_equipment_cap   NUMBER;
+    v_cities          DBMS_SQL.varchar2_table;
 BEGIN
-    DBMS_OUTPUT.PUT_LINE('--- Populating DistributionCenter Table ---');
-
-    FOR i IN 1..15 LOOP -- Populating 15 sample distribution centers
-        v_center_name := 'DC_' || LPAD(i, 2, '0') || '_HQ';
-
-        -- Create a sample Location object
-        v_location := Location(
-            'City_DC_' || MOD(i, 5),
-            'Street_DC_' || i,
-            TO_CHAR(MOD(i, 20) + 1),
-            MOD(i * 200 + 50000, 99999) + 1
+    DBMS_OUTPUT.PUT_LINE('--- Populating Location_TAB ---');
+    
+    v_cities(1) := 'New York'; v_cities(2) := 'Los Angeles'; v_cities(3) := 'Chicago';
+    v_cities(4) := 'Houston'; v_cities(5) := 'Phoenix'; v_cities(6) := 'Boston';
+    v_cities(7) := 'Miami'; v_cities(8) := 'Seattle'; v_cities(9) := 'Denver';
+    v_cities(10) := 'Dallas';
+    
+    FOR i IN 1..40 LOOP
+        v_location_code := 'LOC' || LPAD(location_code_seq.NEXTVAL, 7, '0');
+        
+        -- Random address
+        v_address := Address_t(
+            Street => 'Event Street',
+            StreetNo => TO_CHAR(MOD(i*25, 999) + 1),
+            ZipCode => 10000 + MOD(i*2000, 89999),
+            City => v_cities(MOD(i, 10) + 1),
+            Province => CASE WHEN MOD(i, 3) = 0 THEN 'NY' WHEN MOD(i, 3) = 1 THEN 'CA' ELSE 'TX' END
         );
-
-        -- Get a random Logistic Team REF
-        -- Ensure there's at least one team in the LogisticTeam table
-        SELECT TeamCode INTO v_team_code
-        FROM LogisticTeam
-        ORDER BY DBMS_RANDOM.VALUE
-        FETCH FIRST 1 ROW ONLY;
-
-        SELECT REF(lt) INTO v_logistic_team_ref
-        FROM LogisticTeam lt
-        WHERE lt.TeamCode = v_team_code;
-
-
-        -- Populate ListOfProducts (NESTED TABLE)
-        v_product_list := ProductList(); -- Initialize the nested table
-
-        FOR j IN 1..DBMS_RANDOM.VALUE(10, 30) LOOP -- Each center stocks 10-30 products
-            -- Get a random Product REF
-            SELECT REF(p) INTO v_product_ref
-            FROM Product p
-            ORDER BY DBMS_RANDOM.VALUE
-            FETCH FIRST 1 ROW ONLY;
-
-            -- Add to the nested table
-            v_product_list.EXTEND;
-            v_product_list(v_product_list.LAST) := v_product_ref;
-        END LOOP;
-
-        INSERT INTO DistributionCenter (CenterName, CenterLocation, ByTeam, ListOfProducts)
-        VALUES (
-            v_center_name,
-            v_location,
-            v_logistic_team_ref,
-            v_product_list
-        );
-    END LOOP;
-
-    COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully populated 15 distribution centers into the DistributionCenter table.');
-
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error: Not enough Logistic Teams or Products found. Ensure LogisticTeam and Product tables are populated: ' || SQLERRM);
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error populating DistributionCenter table: ' || SQLERRM);
-END;
-/
-
-DECLARE
-    v_batch_id      NUMBER;
-    v_product_ref   REF Product_t;
-    v_center_ref    REF DistCenter_t;
-    v_product_serial NUMBER;
-    v_center_name   VARCHAR2(30);
-BEGIN
-    DBMS_OUTPUT.PUT_LINE('--- Populating ProductBatch Table ---');
-
-    FOR i IN 1..200 LOOP -- Insert 200 sample product batches
-        v_batch_id := product_batch_id_seq.NEXTVAL;
-
-        -- Randomly select an existing product's SerialNo
-        SELECT SerialNo INTO v_product_serial
-        FROM Product
-        ORDER BY DBMS_RANDOM.VALUE
-        FETCH FIRST 1 ROW ONLY;
-
-        -- Get the REF to that product
-        SELECT REF(p) INTO v_product_ref
-        FROM Product p
-        WHERE p.SerialNo = v_product_serial;
-
-        -- Randomly select an existing distribution center
-        SELECT CenterName INTO v_center_name
-        FROM DistributionCenter
-        ORDER BY DBMS_RANDOM.VALUE
-        FETCH FIRST 1 ROW ONLY;
-
-        -- Get the REF to that center
-        SELECT REF(dc) INTO v_center_ref
-        FROM DistributionCenter dc
-        WHERE dc.CenterName = v_center_name;
-
-        INSERT INTO ProductBatch (BatchID, BatchProduct, Quantity, ArrivalDate, ByDistCenter)
-        VALUES (
-            v_batch_id,
-            v_product_ref,
-            TRUNC(DBMS_RANDOM.VALUE(10, 500)), -- Random quantity between 10 and 500 units
-            SYSDATE - TRUNC(DBMS_RANDOM.VALUE(1, 365)), -- Arrival date within the last year
-            v_center_ref
-        );
-    END LOOP;
-
-    COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully populated 200 product batches into the ProductBatch table.');
-
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error: No products or distribution centers found. Please ensure the Product and DistributionCenter tables are populated before running this script. ' || SQLERRM);
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error populating ProductBatch table: ' || SQLERRM);
-END;
-/
-
-DECLARE
-    v_order_id             NUMBER;
-    v_customer_ref         REF Customer_t;     
-    v_logistic_team_ref    REF LogisticTeam_t; 
-    v_product_batch_ref    REF ProdBatch_t;    
-    v_order_batches        BatchList;          
-    v_customer_code        Customer.CustomerCode%TYPE;
-    v_team_code            LogisticTeam.TeamCode%TYPE;
-    v_batch_id             ProductBatch.BatchID%TYPE;
-    v_order_date           DATE;
-    v_expected_delivery_date DATE;
-    v_delivery_status      VARCHAR2(15);
-BEGIN
-    DBMS_OUTPUT.PUT_LINE('--- Populating BatchOrder Table ---');
-
-    FOR i IN 1..1000 LOOP -- Populating 1000 sample batch orders
-        v_order_id := batch_order_id_seq.NEXTVAL;
-
-        -- Get a random Customer REF
+        
+        -- Random customer reference
         SELECT CustomerCode INTO v_customer_code
-        FROM Customer
+        FROM Customer_TAB
         ORDER BY DBMS_RANDOM.VALUE
         FETCH FIRST 1 ROW ONLY;
-
+        
         SELECT REF(c) INTO v_customer_ref
-        FROM Customer c
+        FROM Customer_TAB c
         WHERE c.CustomerCode = v_customer_code;
-
-        -- Get a random Logistic Team REF
-        SELECT TeamCode INTO v_team_code
-        FROM LogisticTeam
-        ORDER BY DBMS_RANDOM.VALUE
-        FETCH FIRST 1 ROW ONLY;
-
-        SELECT REF(lt) INTO v_logistic_team_ref
-        FROM LogisticTeam lt
-        WHERE lt.TeamCode = v_team_code;
-
-        -- Generate Order and Expected Delivery Dates
-        v_order_date := TRUNC(SYSDATE) - DBMS_RANDOM.VALUE(0, 365); -- Order placed within the last year
-        v_expected_delivery_date := v_order_date + DBMS_RANDOM.VALUE(1, 30); -- Expected delivery 1-30 days after order
-
-        -- Ensure expected delivery date is not before order date (trigger validation)
-        IF v_expected_delivery_date < v_order_date THEN
-            v_expected_delivery_date := v_order_date + 1; -- At least 1 day after
-        END IF;
-
-        -- Choose a random DeliveryStatus
-        v_delivery_status := CASE MOD(i, 5)
-                                WHEN 0 THEN 'Pending'
-                                WHEN 1 THEN 'In Transit'
-                                WHEN 2 THEN 'Delivered'
-                                WHEN 3 THEN 'Cancelled'
-                                WHEN 4 THEN 'Problem'
-                             END;
-
-        -- Populate OrderBatches (NESTED TABLE)
-        v_order_batches := BatchList(); -- Initialize the nested table
-
-        -- Each order has 1 to 5 product batches
-        FOR j IN 1..DBMS_RANDOM.VALUE(1, 5) LOOP
-            -- Get a random ProductBatch REF
-            SELECT BatchID INTO v_batch_id
-            FROM ProductBatch
-            ORDER BY DBMS_RANDOM.VALUE
-            FETCH FIRST 1 ROW ONLY;
-
-            SELECT REF(pb) INTO v_product_batch_ref
-            FROM ProductBatch pb
-            WHERE pb.BatchID = v_batch_id;
-
-            -- Add to the nested table
-            v_order_batches.EXTEND;
-            v_order_batches(v_order_batches.LAST) := v_product_batch_ref;
-        END LOOP;
-
-        INSERT INTO BatchOrder (OrderID, OrderBatches, OrderDate, ExpectedDeliveryDate, DeliveryStatus, ByCustomer, ByLogisticTeam)
+        
+        v_setup_time := TRUNC(DBMS_RANDOM.VALUE(30, 480.99)); -- 30-480 minutes
+        v_equipment_cap := TRUNC(DBMS_RANDOM.VALUE(10, 1000.99)); -- 10-1000 units
+        
+        INSERT INTO Location_TAB (LocationCode, Address, SetupTimeEstimate, EquipmentCapacity, OwnerRef)
         VALUES (
-            v_order_id,
-            v_order_batches,
-            v_order_date,
-            v_expected_delivery_date,
-            v_delivery_status,
-            v_customer_ref,
-            v_logistic_team_ref
+            v_location_code,
+            v_address,
+            v_setup_time,
+            v_equipment_cap,
+            v_customer_ref
         );
     END LOOP;
-
+    
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully populated 1000 batch orders into the BatchOrder table.');
-
+    DBMS_OUTPUT.PUT_LINE('Successfully populated 40 locations into Location_TAB.');
+    
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error: Not enough Customers, Logistic Teams, or Product Batches found. Ensure these tables are populated: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('Error: No customers found. Ensure Customer_TAB is populated: ' || SQLERRM);
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error populating BatchOrder table: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('Error populating Location_TAB: ' || SQLERRM);
 END;
 /
 
+-- ============================================================================
+-- PHASE 6: POPULATE BOOKING_TAB (referencing Team_TAB and Location_TAB)
+-- ============================================================================
 DECLARE
-    v_ticket_id        NUMBER;
-    v_customer_ref     REF Customer_t;   
-    v_batch_order_ref  REF BatchOrder_t; 
-    v_customer_code    Customer.CustomerCode%TYPE;
-    v_order_id         BatchOrder.OrderID%TYPE;
-    v_complaint_type   VARCHAR2(20);
-    v_start_date       DATE;
-    v_end_date         DATE;
+    v_booking_id         NUMBER;
+    v_team_ref           REF Team_t;
+    v_location_ref       REF Location_t;
+    v_team_code          Team_TAB.TeamCode%TYPE;
+    v_location_code      Location_TAB.LocationCode%TYPE;
+    v_booking_type       VARCHAR2(20);
+    v_booking_date       DATE;
+    v_duration           NUMBER;
+    v_total_cost         NUMBER(10,2);
+    v_placement_mode     VARCHAR2(15);
+    v_booking_types      DBMS_SQL.varchar2_table;
+    v_placement_modes    DBMS_SQL.varchar2_table;
+    v_date_offset        NUMBER;
 BEGIN
-    DBMS_OUTPUT.PUT_LINE('--- Populating Complaint Table ---');
-
-    FOR i IN 1..200 LOOP -- Populating 200 sample complaints
-        v_ticket_id := complaint_ticket_id_seq.NEXTVAL;
-
-        -- Get a random Customer REF
-        SELECT CustomerCode INTO v_customer_code
-        FROM Customer
+    DBMS_OUTPUT.PUT_LINE('--- Populating Booking_TAB ---');
+    
+    -- Booking types
+    v_booking_types(1) := 'One-time';
+    v_booking_types(2) := 'Recurring';
+    v_booking_types(3) := 'Seasonal';
+    v_booking_types(4) := 'Promotional';
+    
+    -- Placement modes
+    v_placement_modes(1) := 'Phone';
+    v_placement_modes(2) := 'Mail';
+    v_placement_modes(3) := 'Email';
+    v_placement_modes(4) := 'Website';
+    
+    FOR i IN 1..80 LOOP
+        v_booking_id := booking_id_seq.NEXTVAL;
+        
+        -- Random team reference
+        SELECT TeamCode INTO v_team_code
+        FROM Team_TAB
         ORDER BY DBMS_RANDOM.VALUE
         FETCH FIRST 1 ROW ONLY;
-
-        SELECT REF(c) INTO v_customer_ref
-        FROM Customer c
-        WHERE c.CustomerCode = v_customer_code;
-
-        -- Get a random BatchOrder REF. Prioritize an order by this customer if available,
-        -- otherwise pick any random order (since OnBatchOrder is NOT NULL).
-        BEGIN
-            SELECT OrderID INTO v_order_id
-            FROM BatchOrder bo
-            WHERE bo.ByCustomer = v_customer_ref -- Try to find an order by this customer
-            ORDER BY DBMS_RANDOM.VALUE
-            FETCH FIRST 1 ROW ONLY;
-        EXCEPTION
-            WHEN NO_DATA_FOUND THEN
-                -- If the chosen customer has no orders, pick any random order
-                SELECT OrderID INTO v_order_id
-                FROM BatchOrder
-                ORDER BY DBMS_RANDOM.VALUE
-                FETCH FIRST 1 ROW ONLY;
-        END;
-
-        SELECT REF(bo) INTO v_batch_order_ref
-        FROM BatchOrder bo
-        WHERE bo.OrderID = v_order_id;
-
-        -- Choose a random ComplaintType
-        v_complaint_type := CASE MOD(i, 4)
-                                WHEN 0 THEN 'Delivery Delay'
-                                WHEN 1 THEN 'Missing Items'
-                                WHEN 2 THEN 'Damaged Goods'
-                                WHEN 3 THEN 'Other'
-                            END;
-
-        -- Generate StartDate and optional EndDate
-        v_start_date := TRUNC(SYSDATE) - DBMS_RANDOM.VALUE(0, 365); -- Complaint opened within the last year
-
-        IF MOD(i, 2) = 0 THEN -- About 50% of complaints are resolved
-            v_end_date := v_start_date + DBMS_RANDOM.VALUE(1, 60); -- Resolved within 1-60 days
-            -- Ensure end date isn't in the future
-            IF v_end_date > TRUNC(SYSDATE) THEN
-                v_end_date := TRUNC(SYSDATE);
-            END IF;
+        
+        SELECT REF(t) INTO v_team_ref
+        FROM Team_TAB t
+        WHERE t.TeamCode = v_team_code;
+        
+        -- Random location reference
+        SELECT LocationCode INTO v_location_code
+        FROM Location_TAB
+        ORDER BY DBMS_RANDOM.VALUE
+        FETCH FIRST 1 ROW ONLY;
+        
+        SELECT REF(l) INTO v_location_ref
+        FROM Location_TAB l
+        WHERE l.LocationCode = v_location_code;
+        
+        -- Mix of past, present, future bookings
+        -- 40% past, 30% future, 30% current
+        v_date_offset := DBMS_RANDOM.VALUE(1, 100);
+        IF v_date_offset <= 40 THEN
+            -- Past booking: 1-365 days ago
+            v_booking_date := TRUNC(SYSDATE) - TRUNC(DBMS_RANDOM.VALUE(1, 365.99));
+        ELSIF v_date_offset <= 70 THEN
+            -- Future booking: 1-730 days ahead
+            v_booking_date := TRUNC(SYSDATE) + TRUNC(DBMS_RANDOM.VALUE(1, 730.99));
         ELSE
-            v_end_date := NULL; -- Complaint is still open
+            -- Current booking: within ±30 days
+            v_booking_date := TRUNC(SYSDATE) + TRUNC(DBMS_RANDOM.VALUE(-30, 30.99));
         END IF;
-
-        INSERT INTO Complaint (TicketID, ByCustomer, OnBatchOrder, ComplaintType, StartDate, EndDate)
+        
+        v_duration := TRUNC(DBMS_RANDOM.VALUE(1, 48.99)); -- 1-48 hours
+        v_total_cost := ROUND(DBMS_RANDOM.VALUE(100, 10000), 2); -- $100-$10,000
+        v_booking_type := v_booking_types(TRUNC(DBMS_RANDOM.VALUE(1, 4.99)));
+        v_placement_mode := v_placement_modes(TRUNC(DBMS_RANDOM.VALUE(1, 4.99)));
+        
+        INSERT INTO Booking_TAB (
+            BookingID, BookingType, BookingDate, Duration, TotalCost, 
+            PlacementMode, AtLocation, HandledBy
+        )
         VALUES (
-            v_ticket_id,
-            v_customer_ref,
-            v_batch_order_ref,
-            v_complaint_type,
-            v_start_date,
-            v_end_date
+            v_booking_id,
+            v_booking_type,
+            v_booking_date,
+            v_duration,
+            v_total_cost,
+            v_placement_mode,
+            v_location_ref,
+            v_team_ref
         );
     END LOOP;
-
+    
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully populated 200 complaints into the Complaint table.');
-
+    DBMS_OUTPUT.PUT_LINE('Successfully populated 80 bookings into Booking_TAB.');
+    
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error: Not enough Customers or Batch Orders found. Ensure these tables are populated: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('Error: Not enough teams or locations. Ensure Team_TAB and Location_TAB are populated: ' || SQLERRM);
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error populating Complaint table: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('Error populating Booking_TAB: ' || SQLERRM);
+END;
+/
+
+-- ============================================================================
+-- VERIFICATION SUMMARY
+-- ============================================================================
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== POPULATION COMPLETE ===');
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.NEW_LINE;
+END;
+/
+
+-- Display row counts
+SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF;
+SPOOL OFF;
+
+DECLARE
+    v_office_count      NUMBER;
+    v_equipment_count   NUMBER;
+    v_customer_count    NUMBER;
+    v_team_count        NUMBER;
+    v_location_count    NUMBER;
+    v_booking_count     NUMBER;
+BEGIN
+    SELECT COUNT(*) INTO v_office_count FROM Office_TAB;
+    SELECT COUNT(*) INTO v_equipment_count FROM Equipment_TAB;
+    SELECT COUNT(*) INTO v_customer_count FROM Customer_TAB;
+    SELECT COUNT(*) INTO v_team_count FROM Team_TAB;
+    SELECT COUNT(*) INTO v_location_count FROM Location_TAB;
+    SELECT COUNT(*) INTO v_booking_count FROM Booking_TAB;
+    
+    DBMS_OUTPUT.PUT_LINE('Offices:     ' || v_office_count);
+    DBMS_OUTPUT.PUT_LINE('Equipment:   ' || v_equipment_count);
+    DBMS_OUTPUT.PUT_LINE('Customers:   ' || v_customer_count);
+    DBMS_OUTPUT.PUT_LINE('Teams:       ' || v_team_count);
+    DBMS_OUTPUT.PUT_LINE('Locations:   ' || v_location_count);
+    DBMS_OUTPUT.PUT_LINE('Bookings:    ' || v_booking_count);
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('All tables populated successfully!');
 END;
 /

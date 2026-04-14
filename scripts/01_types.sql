@@ -1,158 +1,101 @@
-DROP TABLE DistributionCenter;
-DROP TABLE Product;
-DROP TABLE ProductBatch;
-DROP TABLE BatchOrder;
-DROP TABLE Customer;
-DROP TABLE Department;
-DROP TABLE LogisticTeam;
-DROP TABLE ChiefOfficier;
-DROP TABLE TeamMember;
-DROP TABLE Complaint;
+-- 1. DROP SECTION (Ordered for dependencies)
+BEGIN
+    FOR obj IN (
+        SELECT 'TABLE' AS object_type, 'BOOKING_TAB' AS object_name FROM dual UNION ALL
+        SELECT 'TABLE', 'LOCATION_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'CUSTOMER_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'TEAM_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'OFFICE_TAB' FROM dual UNION ALL
+        SELECT 'TYPE', 'BOOKING_T' FROM dual UNION ALL
+        SELECT 'TYPE', 'LOCATION_T' FROM dual UNION ALL
+        SELECT 'TYPE', 'CUSTOMER_T' FROM dual UNION ALL
+        SELECT 'TYPE', 'TEAM_T' FROM dual UNION ALL
+        SELECT 'TYPE', 'MEMBER_VA' FROM dual UNION ALL
+        SELECT 'TYPE', 'MEMBER_T' FROM dual UNION ALL
+        SELECT 'TYPE', 'ADDRESS_T' FROM dual
+    ) LOOP
+        BEGIN
+            IF obj.object_type = 'TABLE' THEN
+                EXECUTE IMMEDIATE 'DROP TABLE ' || obj.object_name || ' CASCADE CONSTRAINTS';
+            ELSE
+                EXECUTE IMMEDIATE 'DROP TYPE ' || obj.object_name || ' FORCE';
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF SQLCODE NOT IN (-942, -4043) THEN
+                    RAISE;
+                END IF;
+        END;
+    END LOOP;
+END;
 /
 
-DROP TYPE Location FORCE;
-DROP TYPE PhoneList FORCE;
-DROP TYPE ContactInfo FORCE;
-DROP TYPE PreferencesList FORCE;
-DROP TYPE DepartmentList FORCE;
-DROP TYPE MemberList FORCE;
-DROP TYPE ProductList FORCE;
-DROP TYPE BatchList FORCE;
-DROP TYPE DistCenter_t FORCE;
-DROP TYPE Product_t FORCE;
-DROP TYPE ProdBatch_t FORCE;
-DROP TYPE BatchOrder_t FORCE;
-DROP TYPE Customer_t FORCE;
-DROP TYPE Department_t FORCE;
-DROP TYPE LogisticTeam_t FORCE;
-DROP TYPE ChiefOfficier_t FORCE;
-DROP TYPE TeamMember_t FORCE;
-DROP TYPE Complaint_t FORCE;
-/
-
-CREATE OR REPLACE TYPE Location AS OBJECT
-(
-    City VARCHAR2(30),
+-- 2. BASIC COMPOSITE TYPES
+CREATE OR REPLACE TYPE Address_t AS OBJECT (
     Street VARCHAR2(30),
     StreetNo VARCHAR2(5),
-    ZipCode NUMBER(5)
+    ZipCode NUMBER(5),
+    City VARCHAR2(30),
+    Province VARCHAR2(5)
 );
 /
 
-CREATE OR REPLACE TYPE Product_t AS OBJECT
-(
-    SerialNo NUMBER,
-    ProductCategory VARCHAR2(30),
-    ExpiryDate DATE
-);
-/
-
-CREATE OR REPLACE TYPE PhoneList AS VARRAY(3) OF NUMBER(10);
-/
-
-CREATE OR REPLACE TYPE ContactInfo AS OBJECT
-(
-    PhoneNumbers PhoneList,
-    Email VARCHAR2(50),
-    Fax VARCHAR2(20)
-);
-/
-
-CREATE OR REPLACE TYPE PreferencesList AS TABLE OF REF Product_t;
-/
-
-CREATE OR REPLACE TYPE Department_t AS OBJECT
-(
-    DepartmentID NUMBER,
-    DeptContact ContactInfo,
-    SupplyPreferences PreferencesList
-);
-/
-
-CREATE OR REPLACE TYPE DepartmentList AS TABLE OF REF Department_t;
-/
-
-CREATE OR REPLACE TYPE Customer_t AS OBJECT
-(
-    CustomerCode VARCHAR2(10),
-    CustomerLocation Location,
-    BelongsToDepts DepartmentList
-);
-/
-
-CREATE OR REPLACE TYPE TeamMember_t AS OBJECT
-(
-    TaxCode NUMBER,
-    MemberName VARCHAR2(25),
-    MemberSurname VARCHAR2(25),
-    BirthDate DATE,
-    EmploymentDate DATE
+-- 3. HUMAN RESOURCES (Using Inheritance and VARRAY for BR1)
+CREATE OR REPLACE TYPE Member_t AS OBJECT (
+    TaxCode CHAR(16),
+    FirstName VARCHAR2(25),
+    LastName VARCHAR2(25),
+    BirthDate DATE
 ) NOT FINAL;
 /
 
-CREATE OR REPLACE TYPE ChiefOfficier_t UNDER TeamMember_t
-(
-    StartDate DATE
-);
+-- Using VARRAY(10) to enforce Business Rule BR1 (Max 10 members)
+CREATE OR REPLACE TYPE Member_VA AS VARRAY(10) OF Member_t;
 /
 
-CREATE OR REPLACE TYPE MemberList AS TABLE OF REF TeamMember_t;
-/
-
-CREATE OR REPLACE TYPE LogisticTeam_t AS OBJECT
-(
+CREATE OR REPLACE TYPE Team_t AS OBJECT (
     TeamCode NUMBER,
-    TeamName VARCHAR2(20),
-    TeamChief REF ChiefOfficier_t,
-    TeamMembers MemberList,
-    CompletedDeliveries NUMBER
+    TeamName VARCHAR2(30),
+    NoInstallations NUMBER,
+    Members Member_VA
 );
 /
 
-CREATE OR REPLACE TYPE ProductList AS TABLE OF REF Product_t;
-/
-
-CREATE OR REPLACE TYPE DistCenter_t AS OBJECT
-(
-    CenterName VARCHAR2(30),
-    CenterLocation Location,
-    ByTeam REF LogisticTeam_t,
-    ListOfProducts ProductList
+-- 4. GEOGRAPHY & OFFICES
+CREATE OR REPLACE TYPE Office_t AS OBJECT (
+    Name VARCHAR2(30),
+    Location Address_t,
+    NoEmployees NUMBER,
+    OfficeType VARCHAR2(15)
 );
 /
 
-CREATE OR REPLACE TYPE ProdBatch_t AS OBJECT
-(
-    BatchID NUMBER,
-    BatchProduct REF Product_t,
-    Quantity NUMBER,
-    ArrivalDate DATE,
-    ByDistCenter REF DistCenter_t
+-- 5. CUSTOMERS & EVENT LOCATIONS
+CREATE OR REPLACE TYPE Customer_t AS OBJECT (
+    CustomerCode VARCHAR2(10),
+    Email VARCHAR2(50),
+    CustomerType VARCHAR2(15)
+) NOT FINAL;
+/
+
+CREATE OR REPLACE TYPE Location_t AS OBJECT (
+    LocationCode VARCHAR2(10),
+    Address Address_t,
+    SetupTimeEstimate NUMBER,
+    EquipmentCapacity NUMBER,
+    OwnerRef REF Customer_t
 );
 /
 
-CREATE OR REPLACE TYPE BatchList AS TABLE OF REF ProdBatch_t;
-/
-
-CREATE OR REPLACE TYPE BatchOrder_t AS OBJECT
-(
-    OrderID NUMBER,
-    OrderBatches BatchList,
-    OrderDate DATE,
-    ExpectedDeliveryDate DATE,
-    DeliveryStatus VARCHAR2(15),
-    ByCustomer REF Customer_t,
-    ByLogisticTeam REF LogisticTeam_t
-);
-/
-
-CREATE OR REPLACE TYPE Complaint_t AS OBJECT
-(
-    TicketID NUMBER,
-    ByCustomer REF Customer_t,
-    OnBatchOrder REF BatchOrder_t,
-    ComplaintType VARCHAR2(20),
-    StartDate DATE,
-    EndDate DATE
+-- 6. THE CORE SERVICE
+CREATE OR REPLACE TYPE Booking_t AS OBJECT (
+    BookingID NUMBER,
+    BookingType VARCHAR2(20),
+    BookingDate DATE,
+    Duration NUMBER,
+    TotalCost NUMBER(10,2),
+    PlacementMode VARCHAR2(15),
+    AtLocation REF Location_t,
+    HandledBy REF Team_t
 );
 /

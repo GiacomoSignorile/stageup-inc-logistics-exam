@@ -1,5 +1,5 @@
-# Exam Logistics Project
-> Object-relational Oracle 21c project template for your database systems exam.
+# StageUp Event Setup Exam Project
+> Object-relational Oracle 21c project template for database systems exam practice.
 
 [![CC BY-NC 4.0][cc-by-nc-shield]][cc-by-nc]
 
@@ -9,7 +9,16 @@
 
 ## Project Overview
 
-This repository provides a complete Oracle object-relational logistics system with a Streamlit demo app. It is based on the original project structure and is intended as an exam-ready starting point that you can rename to your specific domain.
+This repository implements an Oracle object-relational event setup system with a Streamlit demo app.
+
+The current implementation is based on these core entities:
+
+- Office_TAB
+- Customer_TAB
+- Team_TAB
+- Location_TAB
+- Equipment_TAB
+- Booking_TAB
 
 ## Getting Started
 
@@ -47,101 +56,62 @@ This repository provides a complete Oracle object-relational logistics system wi
     ```
 3. Open your browser and go to the URL provided by Streamlit.
 
-## Object-Relational Schema (Version 1)
+## Database Bootstrap Order
 
-Below is the first version of the object-relational schema for the StageUp Inc Logistics database. This schema illustrates the initial design of entities, relationships, and object types used to model the logistics operations.
+The Docker container executes scripts in this order:
 
-- Entity and relationship definitions
-- Object types and inheritance structures
-- Key constraints and associations
+1. scripts/00_stageupdba.sql
+2. scripts/01_types.sql
+3. scripts/02_tables.sql
+4. scripts/03_indexes.sql
+5. scripts/04_triggers.sql
+6. scripts/05_views.sql
+7. scripts/06_populatedb.sql
+8. scripts/07_triggertests.sql
 
-Refer to the diagram below for a visual representation.
+This order is required because triggers and views depend on tables, and tests depend on populated data.
 
-![StageUp Inc Logistics Schema (Version 1)](images/ver1.drawio.png)
+## Implemented Object Types
 
-## Object-Relational Schema (Version 2)
+The schema uses Oracle object-relational features including object types, REF columns, VARRAY collections, and views built with DEREF.
 
-The second version of the schema reflects improvements and refinements based on feedback and implementation requirements. This is the schema currently implemented in the database.
+Main custom types:
 
-- Enhanced and optimized relationships
-- Updated object types and inheritance hierarchies
-- Improved constraints and referential integrity
+- Address_t
+- Member_t
+- Member_VA
+- Team_t
+- Office_t
+- Customer_t
+- Location_t
+- Booking_t
 
-See the diagram below for the updated schema.
-![StageUp Inc Logistics Schema (Version 2)](images/ver2.drawio.png)
+## Implemented Tables
 
-## Implemented Database Objects
+- Office_TAB
+- Customer_TAB
+- Team_TAB
+- Location_TAB
+- Equipment_TAB
+- Booking_TAB
 
-### Object Types
+## Implemented Indexes
 
-The StageUp Inc Logistics database uses Oracle object-relational features with the following custom types:
+Indexes are defined in scripts/03_indexes.sql for:
 
-- `Location`: Represents a physical address (city, street, street number, zip code).
-- `Product_t`: Represents a product with serial number, category, and expiry date.
-- `PhoneList`: `VARRAY` of up to 3 phone numbers.
-- `ContactInfo`: Stores phone numbers, email, and fax for contacts.
-- `PreferencesList`: Nested table of product references for department supply preferences.
-- `Department_t`: Represents a department with contact info and supply preferences.
-- `DepartmentList`: Nested table of department references for customer affiliations.
-- `Customer_t`: Represents a customer with a code, location, and affiliated departments.
-- `TeamMember_t`: Represents a team member with tax code, name, surname, birth and employment dates.
-- `ChiefOfficier_t`: Subtype of `TeamMember_t`, adds a start date for chief officers.
-- `MemberList`: Nested table of team member references for logistic teams.
-- `LogisticTeam_t`: Represents a logistics team with code, name, chief, members, and completed deliveries.
-- `ProductList`: Nested table of product references for distribution centers.
-- `DistCenter_t`: Represents a distribution center with name, location, managing team, and stocked products.
-- `ProdBatch_t`: Represents a product batch with batch ID, product reference, quantity, arrival date, and distribution center reference.
-- `BatchList`: Nested table of product batch references for batch orders.
-- `BatchOrder_t`: Represents an order with ID, batches, dates, status, customer, and assigned team.
-- `Complaint_t`: Represents a complaint with ticket ID, customer, batch order, type, and dates.
+- REF navigation fields in Booking_TAB and Location_TAB
+- Team performance sorting
+- Booking categorical filtering
+- Office type filtering
 
-### Tables
+## Implemented Triggers
 
-Each main entity and relationship is implemented as a table of its corresponding object type:
+Triggers are defined in scripts/04_triggers.sql and include:
 
-- `Product`
-- `Department` (with nested table: `SupplyPreferences`)
-- `Customer` (with nested table: `BelongsToDepts`)
-- `TeamMember`
-- `ChiefOfficier`
-- `LogisticTeam` (with nested table: `TeamMembers`)
-- `DistributionCenter` (with nested table: `ListOfProducts`)
-- `ProductBatch`
-- `BatchOrder`
-- `Complaint`
+- Synchronization of Team_TAB.NoInstallations when Booking_TAB rows are inserted, deleted, or reassigned
+- Team insertion/update constraints on NoInstallations changes
 
-### Indexes
-
-To optimize queries and maintain relationships, the following indexes are implemented:
-
-- **On REF columns for joins/relationships:**
-  - `IdxProdBatchProduct` on `ProductBatch(BatchProduct)`
-  - `IdxLogTeamChief` on `LogisticTeam(TeamChief)`
-  - `IdxDistCenterByTeam` on `DistributionCenter(ByTeam)`
-  - `IdxBatchOrderByCustomer` on `BatchOrder(ByCustomer)`
-  - `IdxBatchOrderByLogTeam` on `BatchOrder(ByLogisticTeam)`
-  - `IdxComplaintByCustomer` on `Complaint(ByCustomer)`
-  - `IdxComplaintOnBatchOrder` on `Complaint(OnBatchOrder)`
-- **On frequently queried columns:**
-  - `IdxProductCategory` on `Product(ProductCategory)`
-  - `IdxProductExpiryDate` on `Product(ExpiryDate)`
-  - `IdxBatchOrderDeliveryStatus` on `BatchOrder(DeliveryStatus)`
-  - `IdxComplaintType` on `Complaint(ComplaintType)`
-
-### Triggers
-
-Several triggers are implemented to enforce business rules and maintain data consistency:
-
-- `TrgTeamMemberDates`: Ensures employment date is after birth date and not in the future.
-- `TrgChiefOfficierStartDate`: Ensures chief officer's start date is after employment date and not in the future.
-- `TrgBatchOrderDates`: Ensures expected delivery date is not before order date.
-- `TrgComplaintDates`: Ensures complaint end date is not before start date.
-- `TrgUpdateTeamDeliveries`: Increments a team's completed deliveries when an order is marked as delivered.
-- `TrgReassignTeamChief`: Automatically reassigns a new chief officer if the current one is deleted.
-- `TrgNoExpiredProductBatch`: Forbids inserting or updating a product batch with an expired product.
-- `TrgBatchArrivalDate`: Forbids inserting or updating a product batch with an arrival date in the past.
-
-> See the `scripts/01_types.sql`, `scripts/02_tables.sql`, `scripts/03_indexes.sql`, and `scripts/04_triggers.sql` files for full DDL and trigger logic.
+See scripts/01_types.sql through scripts/07_triggertests.sql for full DDL, data population, and validation tests.
 
 ## Streamlit Demo Home Page
 
@@ -168,137 +138,24 @@ The following screenshot displays all database tables as shown in the demo appli
 
 > If some tables appear empty, it means you logged in before the population process was completed. Please close the streamlit demo and do the whole procedure by the start.
 
-## Operation 1: Register a New Product Batch
+## Streamlit Pages
 
-**Query to fetch products available at a selected distribution center:**
-```sql
-SELECT DEREF(p.COLUMN_VALUE).SerialNo, DEREF(p.COLUMN_VALUE).ProductCategory, 
-       DEREF(p.COLUMN_VALUE).ExpiryDate
-FROM DistributionCenter dc, TABLE(dc.ListOfProducts) p
-WHERE dc.CenterName = :center
-ORDER BY DEREF(p.COLUMN_VALUE).SerialNo
-```
+The application exposes the following pages in webapp/pages:
 
-**Query to insert a new product batch:**
-```sql
-INSERT INTO ProductBatch 
-(BatchID, BatchProduct, Quantity, ArrivalDate, ByDistCenter)
-VALUES (
-    :batch_id,
-    (SELECT REF(p) FROM Product p WHERE p.SerialNo = :serial_no),
-    :quantity,
-    :arrival_date,
-    (SELECT REF(dc) FROM DistributionCenter dc WHERE dc.CenterName = :center)
-)
-```
+- 1_Login.py: user login and connection test
+- 2_Tables.py: raw tables and view previews
+- 3_Register_New_Product_Batch.py: create new booking
+- 4_Place_New_Order.py: edit booking details
+- 5_Team_Performance.py: team and booking analytics
+- 6_Assign_Delivery_To_Team.py: reassign booking team
+- 7_View_Team_Deliveries.py: team booking report
+- 8_List_Expired_Batches.py: upcoming bookings report
 
-The following screenshot shows the implementation of **Operation 1: Register a new product batch** in the demo application:
+## Notes
 
-![Operation 1 - Register a New Product Batch](images/op1.png)
-
-## Operation 2: Place a new order
-
-**Query to fetch product batches:**
-```sql
-SELECT BatchID, DEREF(BatchProduct).SerialNo, Quantity, ArrivalDate
-FROM ProductBatch
-ORDER BY BatchID
-```
-
-**Query to insert a new batch order:**
-```sql
-INSERT INTO BatchOrder (
-    OrderID, OrderBatches, OrderDate,
-    ExpectedDeliveryDate, DeliveryStatus,
-    ByCustomer, ByLogisticTeam
-)
-VALUES (
-    :order_id,
-    (SELECT CAST(COLLECT(REF(pb)) AS BatchList)
-     FROM ProductBatch pb
-     WHERE pb.BatchID IN (<selected_batch_ids>)
-    ),
-    :order_date,
-    :expected_delivery,
-    :status,
-    (SELECT REF(c) FROM Customer c WHERE c.CustomerCode = :customer),
-    NULL
-)
-```
-
-The following screenshot shows the implementation of **Operation 2: Place a new order** in the demo application:
-
-![Operation 2 - Place a New Order](images/op2.png)
-
-## Operation 3: Assign a delivery to a logistics team
-
-**Query to fetch pending, unassigned orders:**
-```sql
-SELECT bo.OrderID, bo.DeliveryStatus
-FROM BatchOrder bo
-WHERE bo.DeliveryStatus = 'Pending' AND bo.ByLogisticTeam IS NULL
-ORDER BY bo.OrderID
-```
-
-**Query to update the assigned team:**
-```sql
-UPDATE BatchOrder
-SET ByLogisticTeam = (
-    SELECT REF(t)
-    FROM LogisticTeam t
-    WHERE t.TeamCode = :team_code
-)
-WHERE OrderID = :order_id
-```
-
-The following screenshot shows the implementation of **Operation 3: Assign a delivery to a logistics team** in the demo application:
-
-![Operation 3 - Assign a Delivery to a Logistics Team](images/op3.png)
-
-## Operation 4: View all deliveries assigned to the team coordinated by a specific chief officer
-
-**Query to fetch teams coordinated by a chief:**
-```sql
-SELECT TeamCode, TeamName FROM LogisticTeam
-WHERE TeamChief = (SELECT REF(c) FROM ChiefOfficier c WHERE c.TaxCode = :taxcode)
-```
-
-**Query to fetch all deliveries assigned to these teams:**
-```sql
-SELECT bo.OrderID, bo.OrderDate, bo.ExpectedDeliveryDate,
-       bo.DeliveryStatus, DEREF(bo.ByCustomer).CustomerCode
-FROM BatchOrder bo
-WHERE DEREF(bo.ByLogisticTeam).TeamCode IN (<team_codes>)
-ORDER BY bo.OrderID
-```
-
-The following screenshot shows the implementation of **Operation 4: View all deliveries assigned to the team coordinated by a specific chief officer** in the demo application:
-
-![Operation 4 - View All Deliveries Assigned to a Team](images/op4.png)
-
-## Operation 5: List all batches of expired products
-
-**Query to list all batches of expired products:**
-```sql
-SELECT pb.BatchID, DEREF(pb.BatchProduct).SerialNo, 
-       DEREF(pb.BatchProduct).ProductCategory, 
-       DEREF(pb.BatchProduct).ExpiryDate, pb.Quantity, 
-       pb.ArrivalDate, dc.CenterName
-FROM ProductBatch pb
-JOIN DistributionCenter dc
-  ON EXISTS (
-    SELECT 1 FROM TABLE(dc.ListOfProducts) p
-    WHERE DEREF(p.COLUMN_VALUE).SerialNo = DEREF(pb.BatchProduct).SerialNo
-  )
-WHERE DEREF(pb.BatchProduct).ExpiryDate < TRUNC(SYSDATE)
-ORDER BY pb.BatchID
-```
-
-The following screenshot shows the implementation of **Operation 5: List all batches of expired products** in the demo application:
-
-![Operation 5 - List All Batches of Expired Products](images/op5.png)
-
-> For more details, see the corresponding Streamlit page in `webapp/pages/` for each operation.
+- The data population script generates realistic synthetic data for demo/testing.
+- Trigger tests intentionally include expected failures to validate constraints.
+- Equipment stock updates are currently manual because no direct Booking-to-Equipment relation is modeled.
 
 ## License
 

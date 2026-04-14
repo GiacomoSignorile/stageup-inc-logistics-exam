@@ -1,45 +1,48 @@
 import streamlit as st
 import oracledb
 import db_utils
-from datetime import date
 
-st.title("⏰ List All Batches of Expired Products")
+st.title("⏰ Upcoming Bookings (Next 30 Days)")
 
-if not db_utils.st.session_state.db_connected or not db_utils.st.session_state.logged_in_user:
-    st.warning("You must be logged in to view expired product batches. Please go to the **'Login'** page.")
+if not st.session_state.db_connected or not st.session_state.logged_in_user:
+    st.warning("You must be logged in to view this report. Please go to **Login**.")
 else:
-    with db_utils.st.session_state.db_pool.acquire() as connection:
+    with st.session_state.db_pool.acquire() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 '''
-                SELECT pb.BatchID, DEREF(pb.BatchProduct).SerialNo, 
-                       DEREF(pb.BatchProduct).ProductCategory, 
-                       DEREF(pb.BatchProduct).ExpiryDate, pb.Quantity, 
-                       pb.ArrivalDate, dc.CenterName
-                FROM ProductBatch pb
-                JOIN DistributionCenter dc
-                  ON EXISTS (
-                    SELECT 1 FROM TABLE(dc.ListOfProducts) p
-                    WHERE DEREF(p.COLUMN_VALUE).SerialNo = DEREF(pb.BatchProduct).SerialNo
-                  )
-                WHERE DEREF(pb.BatchProduct).ExpiryDate < TRUNC(SYSDATE)
-                ORDER BY pb.BatchID
+                SELECT b.BookingID,
+                       b.BookingType,
+                       b.BookingDate,
+                       b.Duration,
+                       b.TotalCost,
+                       b.PlacementMode,
+                       DEREF(b.AtLocation).LocationCode,
+                       DEREF(b.AtLocation).Address.City,
+                       DEREF(b.HandledBy).TeamName,
+                       DEREF(DEREF(b.AtLocation).OwnerRef).CustomerCode
+                FROM Booking_TAB b
+                WHERE b.BookingDate BETWEEN TRUNC(SYSDATE) AND TRUNC(SYSDATE) + 30
+                ORDER BY b.BookingDate, b.BookingID
                 '''
             )
             rows = cursor.fetchall()
         if not rows:
-            st.info("No expired product batches found.")
+            st.info("No upcoming bookings in the next 30 days.")
         else:
             st.dataframe(
                 [
                     {
-                        "BatchID": row[0],
-                        "Product SerialNo": row[1],
-                        "Category": row[2],
-                        "Expiry Date": row[3].strftime('%Y-%m-%d') if row[3] else '',
-                        "Quantity": row[4],
-                        "Arrival Date": row[5].strftime('%Y-%m-%d'),
-                        "Distribution Center": row[6]
+                        "BookingID": row[0],
+                        "Type": row[1],
+                        "Booking Date": row[2].strftime('%Y-%m-%d') if row[2] else '',
+                        "Duration (h)": row[3],
+                        "Total Cost": row[4],
+                        "Placement": row[5],
+                        "Location": row[6],
+                        "City": row[7],
+                        "Team": row[8],
+                        "Customer": row[9],
                     }
                     for row in rows
                 ],

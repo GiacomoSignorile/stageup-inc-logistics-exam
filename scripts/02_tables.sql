@@ -1,97 +1,81 @@
-CREATE TABLE Product OF Product_t
-(
-    SerialNo PRIMARY KEY,
-    ProductCategory NOT NULL,
-    CHECK (ProductCategory IN ('Medical Equipment', 'Supplies', 'Consumables'))
+-- DROP SECTION (safe cleanup before creation)
+BEGIN
+    FOR obj IN (
+        SELECT 'TABLE' AS object_type, 'OFFICE_TAB' AS object_name FROM dual UNION ALL
+        SELECT 'TABLE', 'CUSTOMER_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'TEAM_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'LOCATION_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'EQUIPMENT_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'BOOKING_TAB' FROM dual
+    ) LOOP
+        BEGIN
+            EXECUTE IMMEDIATE 'DROP TABLE ' || obj.object_name || ' CASCADE CONSTRAINTS';
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF SQLCODE NOT IN (-942) THEN
+                    RAISE;
+                END IF;
+        END;
+    END LOOP;
+END;
+/
+
+-- 1. OFFICE TABLE (Central Office and Depots)
+CREATE TABLE Office_TAB OF Office_t (
+    Name PRIMARY KEY,
+    OfficeType NOT NULL,
+    CHECK (OfficeType IN ('Central', 'Depot'))
 );
 /
 
-CREATE TABLE Department OF Department_t
-(
-    DepartmentID PRIMARY KEY,
-    DeptContact NOT NULL
-)
-NESTED TABLE SupplyPreferences STORE AS SupplyPreferencesNT;
-/
-
-CREATE TABLE Customer OF Customer_t
-(
+-- 2. CUSTOMER TABLE (Using inheritance)
+CREATE TABLE Customer_TAB OF Customer_t (
     CustomerCode PRIMARY KEY,
-    CustomerLocation NOT NULL
-)
-NESTED TABLE BelongsToDepts STORE AS BelongsToDeptsNT;
-/
-
-CREATE TABLE TeamMember OF TeamMember_t
-(
-    TaxCode PRIMARY KEY,
-    MemberName NOT NULL,
-    MemberSurname NOT NULL,
-    BirthDate NOT NULL,
-    EmploymentDate NOT NULL
+    CustomerType NOT NULL,
+    CHECK (CustomerType IN ('Individual', 'Company'))
 );
 /
 
-CREATE TABLE ChiefOfficier OF ChiefOfficier_t
-(
-    TaxCode PRIMARY KEY,
-    StartDate NOT NULL
-);
-/
-
-CREATE TABLE LogisticTeam OF LogisticTeam_t
-(
+-- 3. SETUP TEAM TABLE 
+-- Note: No NESTED TABLE clause needed because 'Members' is a VARRAY
+CREATE TABLE Team_TAB OF Team_t (
     TeamCode PRIMARY KEY,
     TeamName NOT NULL,
-    TeamChief NOT NULL SCOPE IS ChiefOfficier,
-    CompletedDeliveries DEFAULT 0 NOT NULL
-)
-NESTED TABLE TeamMembers STORE AS TeamMembersNT;
-/
-
-CREATE TABLE DistributionCenter OF DistCenter_t
-(
-    CenterName PRIMARY KEY,
-    ByTeam NOT NULL SCOPE IS LogisticTeam,
-    CenterLocation NOT NULL
-)
-NESTED TABLE ListOfProducts STORE AS ListOfProductsNT;
-/
-
-CREATE TABLE ProductBatch OF ProdBatch_t
-(
-    BatchID PRIMARY KEY,
-    BatchProduct NOT NULL SCOPE IS Product,
-    Quantity NOT NULL,
-    ArrivalDate NOT NULL,
-    ByDistCenter NOT NULL SCOPE IS DistributionCenter
+    NoInstallations DEFAULT 0 NOT NULL -- Redundant attribute for Performance Analysis
 );
 /
 
-CREATE TABLE BatchOrder OF BatchOrder_t
-(
-    OrderID PRIMARY KEY,
-    OrderDate NOT NULL,
-    ExpectedDeliveryDate NOT NULL,
-    DeliveryStatus NOT NULL,
-    ByCustomer NOT NULL SCOPE IS Customer,
-    ByLogisticTeam SCOPE IS LogisticTeam,
-    CHECK (DeliveryStatus IN (
-        'Pending', 'In Transit', 'Delivered', 'Cancelled', 'Problem'
-    ))
-)
-NESTED TABLE OrderBatches STORE AS OrderBatchesNT;
+-- 4. EVENT LOCATION TABLE
+CREATE TABLE Location_TAB OF Location_t (
+    LocationCode PRIMARY KEY,
+    OwnerRef NOT NULL,
+    SetupTimeEstimate NOT NULL,
+    EquipmentCapacity NOT NULL,
+    SCOPE FOR (OwnerRef) IS (SELECT REF(c) FROM Customer_TAB c)
+);
 /
 
-CREATE TABLE Complaint OF Complaint_t
-(
-    TicketID PRIMARY KEY,
-    ByCustomer NOT NULL SCOPE IS Customer,
-    OnBatchOrder NOT NULL SCOPE IS BatchOrder,
-    ComplaintType NOT NULL,
-    StartDate NOT NULL,
-    CHECK (ComplaintType IN (
-        'Delivery Delay', 'Missing Items', 'Damaged Goods', 'Other'
-    ))
+-- 5. EQUIPMENT TABLE (Required for Exercise 6 Triggers)
+CREATE TABLE Equipment_TAB (
+    ItemCode NUMBER PRIMARY KEY,
+    Description VARCHAR2(100),
+    UnitsAvailable NUMBER NOT NULL,
+    CHECK (UnitsAvailable >= 0)
+);
+/
+
+-- 6. BOOKING TABLE (Renamed from BatchOrder)
+CREATE TABLE Booking_TAB OF Booking_t (
+    BookingID PRIMARY KEY,
+    BookingType NOT NULL,
+    BookingDate NOT NULL,
+    Duration NOT NULL,
+    TotalCost NOT NULL,
+    PlacementMode NOT NULL,
+    AtLocation NOT NULL SCOPE IS Location_TAB,
+    HandledBy NOT NULL SCOPE IS Team_TAB,
+    CHECK (BookingType IN ('One-time', 'Recurring', 'Seasonal', 'Promotional')),
+    CHECK (PlacementMode IN ('Phone', 'Mail', 'Email', 'Website')),
+    CHECK (TotalCost > 0)
 );
 /

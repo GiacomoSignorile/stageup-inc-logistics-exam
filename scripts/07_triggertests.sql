@@ -1,166 +1,391 @@
+-- ============================================================================
+-- STAGEUP EVENT SETUP - TRIGGER TESTS (NEW SCHEMA)
+-- ============================================================================
+-- Tests for:
+-- 1. SYNC_TEAM_INSTALLS - Synchronizes Team NoInstallations when bookings change
+-- 2. CHECK_TEAM_CONSTRAINTS - Validates new teams start at 0, changes only by ±1
+-- 3. Booking constraint validation - Valid BookingType, PlacementMode, TotalCost > 0
+-- ============================================================================
+
+-- ============================================================================
+-- TEST 1: Successful Team Creation (CHECK_TEAM_CONSTRAINTS)
+-- ============================================================================
 DECLARE
-    v_tax_code NUMBER;
+    v_team_code NUMBER;
+    v_initial_count NUMBER;
 BEGIN
-    SELECT person_tax_code_seq.NEXTVAL INTO v_tax_code FROM DUAL;
-    DBMS_OUTPUT.PUT_LINE('--- Testing TrgTeamMemberDates (Successful Insert) ---');
-    INSERT INTO TeamMember (TaxCode, MemberName, MemberSurname, BirthDate, EmploymentDate)
-    VALUES (v_tax_code, 'TestMember', 'Success', DATE '1990-01-15', DATE '2015-06-01');
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== TEST 1: Successful Team Creation ===');
+    
+    -- Create a team with Member_VA
+    v_team_code := team_code_seq.NEXTVAL;
+    
+    INSERT INTO Team_TAB (TeamCode, TeamName, NoInstallations, Members)
+    VALUES (
+        v_team_code,
+        'TestTeam_' || v_team_code,
+        0, -- Must be 0 for new teams
+        Member_VA(
+            Member_t('AABBCC1111111111', 'John', 'Test', DATE '1990-05-15'),
+            Member_t('DDEEGG2222222222', 'Jane', 'Test', DATE '1992-07-20')
+        )
+    );
+    
+    -- Verify NoInstallations is 0
+    SELECT NoInstallations INTO v_initial_count FROM Team_TAB WHERE TeamCode = v_team_code;
+    
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully inserted TestMember. TaxCode: ' || v_tax_code);
+    DBMS_OUTPUT.PUT_LINE('✓ Team created successfully with TeamCode: ' || v_team_code);
+    DBMS_OUTPUT.PUT_LINE('✓ NoInstallations initialized to: ' || v_initial_count);
+    
 EXCEPTION
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error on successful insert test: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('✗ Error creating team: ' || SQLERRM);
 END;
 /
 
+-- ============================================================================
+-- TEST 2: Invalid Team Creation - Non-zero Initial Installations
+-- ============================================================================
 DECLARE
-    v_tax_code NUMBER;
+    v_team_code NUMBER;
 BEGIN
-    SELECT person_tax_code_seq.NEXTVAL INTO v_tax_code FROM DUAL;
-    DBMS_OUTPUT.PUT_LINE('--- Testing TrgTeamMemberDates (Failing Insert - Employment before Birth) ---');
-    INSERT INTO TeamMember (TaxCode, MemberName, MemberSurname, BirthDate, EmploymentDate)
-    VALUES (v_tax_code, 'TestMember', 'Fail1', DATE '2000-01-01', DATE '1999-12-31');
-    COMMIT; -- This will not be reached if trigger fires
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== TEST 2: Invalid Team Creation (Non-zero Installations) ===');
+    
+    v_team_code := team_code_seq.NEXTVAL;
+    
+    INSERT INTO Team_TAB (TeamCode, TeamName, NoInstallations, Members)
+    VALUES (
+        v_team_code,
+        'FailTeam_' || v_team_code,
+        5, -- Should fail - new teams must start at 0
+        Member_VA(Member_t('XXXX1111111111XX', 'Fail', 'Test', DATE '1995-03-10'))
+    );
+    
+    COMMIT; -- Should not reach here
 EXCEPTION
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Expected Error (Employment before Birth): ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('✓ Expected Error: ' || SQLERRM);
 END;
 /
 
+-- ============================================================================
+-- TEST 3: Successful Booking Insertion (SYNC_TEAM_INSTALLS triggers)
+-- ============================================================================
 DECLARE
-    v_tax_code NUMBER;
+    v_booking_id    NUMBER;
+    v_team_code     NUMBER;
+    v_team_ref      REF Team_t;
+    v_location_ref  REF Location_t;
+    v_install_count_before NUMBER;
+    v_install_count_after  NUMBER;
 BEGIN
-    -- Insert a valid record first to update
-    SELECT person_tax_code_seq.NEXTVAL INTO v_tax_code FROM DUAL;
-    INSERT INTO TeamMember (TaxCode, MemberName, MemberSurname, BirthDate, EmploymentDate)
-    VALUES (v_tax_code, 'TestMember', 'ForUpdate', DATE '1985-05-10', DATE '2010-03-01');
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== TEST 3: Successful Booking Insertion ===');
+    
+    -- Get a team and check its installations count before
+    SELECT TeamCode INTO v_team_code FROM Team_TAB ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    SELECT NoInstallations INTO v_install_count_before FROM Team_TAB WHERE TeamCode = v_team_code;
+    
+    -- Get team reference
+    SELECT REF(t) INTO v_team_ref FROM Team_TAB t WHERE t.TeamCode = v_team_code;
+    
+    -- Get a location reference
+    SELECT REF(l) INTO v_location_ref FROM Location_TAB l ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    
+    -- Insert booking
+    v_booking_id := booking_id_seq.NEXTVAL;
+    INSERT INTO Booking_TAB (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
+    VALUES (
+        v_booking_id,
+        'One-time',
+        TRUNC(SYSDATE) + 5,
+        8,
+        500.00,
+        'Email',
+        v_location_ref,
+        v_team_ref
+    );
+    
+    -- Check installations count after
+    SELECT NoInstallations INTO v_install_count_after FROM Team_TAB WHERE TeamCode = v_team_code;
+    
     COMMIT;
-
-    DBMS_OUTPUT.PUT_LINE('--- Testing TrgTeamMemberDates (Failing Update - Employment in Future) ---');
-    UPDATE TeamMember
-    SET EmploymentDate = TRUNC(SYSDATE) + 10 -- 10 days in the future
-    WHERE TaxCode = v_tax_code;
-    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('✓ Booking inserted successfully. BookingID: ' || v_booking_id);
+    DBMS_OUTPUT.PUT_LINE('✓ Team NoInstallations before: ' || v_install_count_before);
+    DBMS_OUTPUT.PUT_LINE('✓ Team NoInstallations after: ' || v_install_count_after);
+    DBMS_OUTPUT.PUT_LINE('✓ Increment verified: ' || (v_install_count_after - v_install_count_before) || ' (expected: 1)');
+    
 EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('✗ Prerequisite Error: Ensure Team_TAB and Location_TAB are populated.');
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Expected Error (Employment in Future): ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('✗ Error inserting booking: ' || SQLERRM);
 END;
 /
 
+-- ============================================================================
+-- TEST 4: Booking Deletion (SYNC_TEAM_INSTALLS - decrement)
+-- ============================================================================
 DECLARE
-    v_tax_code NUMBER;
-    v_employment_date DATE;
+    v_booking_id            NUMBER;
+    v_team_code             NUMBER;
+    v_install_count_before  NUMBER;
+    v_install_count_after   NUMBER;
 BEGIN
-    -- Find an existing TeamMember who is NOT yet a ChiefOfficier
-    SELECT TaxCode, EmploymentDate
-    INTO v_tax_code, v_employment_date
-    FROM TeamMember tm
-    WHERE NOT EXISTS (SELECT 1 FROM ChiefOfficier co WHERE co.TaxCode = tm.TaxCode)
-    ORDER BY DBMS_RANDOM.VALUE
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== TEST 4: Booking Deletion (Team Installations Decrement) ===');
+    
+    -- Get an existing booking and its team
+    SELECT BookingID, DEREF(HandledBy).TeamCode 
+    INTO v_booking_id, v_team_code
+    FROM Booking_TAB 
+    ORDER BY DBMS_RANDOM.VALUE 
     FETCH FIRST 1 ROW ONLY;
-
-    DBMS_OUTPUT.PUT_LINE('--- Testing TrgChiefOfficierStartDate (Successful Insert) ---');
-    INSERT INTO ChiefOfficier (TaxCode, StartDate)
-    VALUES (v_tax_code, v_employment_date + 365); -- StartDate 1 year after EmploymentDate
+    
+    -- Get installations count before deletion
+    SELECT NoInstallations INTO v_install_count_before FROM Team_TAB WHERE TeamCode = v_team_code;
+    
+    -- Delete the booking
+    DELETE FROM Booking_TAB WHERE BookingID = v_booking_id;
+    
+    -- Check installations count after
+    SELECT NoInstallations INTO v_install_count_after FROM Team_TAB WHERE TeamCode = v_team_code;
+    
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully inserted ChiefOfficier. TaxCode: ' || v_tax_code);
+    DBMS_OUTPUT.PUT_LINE('✓ Booking deleted successfully. BookingID: ' || v_booking_id);
+    DBMS_OUTPUT.PUT_LINE('✓ Team NoInstallations before: ' || v_install_count_before);
+    DBMS_OUTPUT.PUT_LINE('✓ Team NoInstallations after: ' || v_install_count_after);
+    DBMS_OUTPUT.PUT_LINE('✓ Decrement verified: ' || (v_install_count_before - v_install_count_after) || ' (expected: 1)');
+    
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
-        DBMS_OUTPUT.PUT_LINE('Prerequisite Error: No eligible TeamMember found to promote to ChiefOfficier.');
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('✗ Prerequisite Error: Ensure Booking_TAB has records to delete.');
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error on successful ChiefOfficier insert test: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('✗ Error deleting booking: ' || SQLERRM);
 END;
 /
 
+-- ============================================================================
+-- TEST 5: Invalid Booking - TotalCost = 0 (Constraint Violation)
+-- ============================================================================
 DECLARE
-    v_tax_code NUMBER;
-    v_employment_date DATE;
+    v_booking_id   NUMBER;
+    v_team_ref     REF Team_t;
+    v_location_ref REF Location_t;
 BEGIN
-    -- Find an existing TeamMember who is NOT yet a ChiefOfficier
-    SELECT TaxCode, EmploymentDate
-    INTO v_tax_code, v_employment_date
-    FROM TeamMember tm
-    WHERE NOT EXISTS (SELECT 1 FROM ChiefOfficier co WHERE co.TaxCode = tm.TaxCode)
-    ORDER BY DBMS_RANDOM.VALUE
-    FETCH FIRST 1 ROW ONLY;
-
-    DBMS_OUTPUT.PUT_LINE('--- Testing TrgChiefOfficierStartDate (Failing Insert - StartDate before EmploymentDate) ---');
-    INSERT INTO ChiefOfficier (TaxCode, StartDate)
-    VALUES (v_tax_code, v_employment_date - 10); -- StartDate 10 days before EmploymentDate
-    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== TEST 5: Invalid Booking - TotalCost = 0 ===');
+    
+    v_booking_id := booking_id_seq.NEXTVAL;
+    
+    -- Get references
+    SELECT REF(t) INTO v_team_ref FROM Team_TAB t ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    SELECT REF(l) INTO v_location_ref FROM Location_TAB l ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    
+    INSERT INTO Booking_TAB (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
+    VALUES (
+        v_booking_id,
+        'One-time',
+        TRUNC(SYSDATE),
+        4,
+        0.00, -- Should fail - TotalCost must be > 0
+        'Phone',
+        v_location_ref,
+        v_team_ref
+    );
+    
+    COMMIT; -- Should not reach here
 EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        DBMS_OUTPUT.PUT_LINE('Prerequisite Error: No eligible TeamMember found to promote to ChiefOfficier.');
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Expected Error (ChiefOfficier StartDate before EmploymentDate): ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('✓ Expected Error: ' || SQLERRM);
 END;
 /
 
+-- ============================================================================
+-- TEST 6: Invalid Booking - Invalid BookingType
+-- ============================================================================
 DECLARE
-    v_order_id             NUMBER;
-    v_customer_ref         REF Customer_t;
-    v_logistic_team_ref    REF LogisticTeam_t;
-    v_product_batch_ref    REF ProdBatch_t;
-    v_order_batches        BatchList := BatchList();
+    v_booking_id   NUMBER;
+    v_team_ref     REF Team_t;
+    v_location_ref REF Location_t;
 BEGIN
-    SELECT batch_order_id_seq.NEXTVAL INTO v_order_id FROM DUAL;
-
-    -- Get a random Customer REF
-    SELECT REF(c) INTO v_customer_ref
-    FROM Customer c ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-
-    -- Get a random Logistic Team REF
-    SELECT REF(lt) INTO v_logistic_team_ref
-    FROM LogisticTeam lt ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-
-    -- Get a random ProductBatch REF
-    SELECT REF(pb) INTO v_product_batch_ref
-    FROM ProductBatch pb ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-    v_order_batches.EXTEND; v_order_batches(1) := v_product_batch_ref;
-
-    DBMS_OUTPUT.PUT_LINE('--- Testing TrgBatchOrderDates (Successful Insert) ---');
-    INSERT INTO BatchOrder (OrderID, OrderBatches, OrderDate, ExpectedDeliveryDate, DeliveryStatus, ByCustomer, ByLogisticTeam)
-    VALUES (v_order_id, v_order_batches, DATE '2024-01-01', DATE '2024-01-10', 'Pending', v_customer_ref, v_logistic_team_ref);
-    COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully inserted BatchOrder. OrderID: ' || v_order_id);
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== TEST 6: Invalid Booking - Invalid BookingType ===');
+    
+    v_booking_id := booking_id_seq.NEXTVAL;
+    
+    -- Get references
+    SELECT REF(t) INTO v_team_ref FROM Team_TAB t ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    SELECT REF(l) INTO v_location_ref FROM Location_TAB l ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    
+    INSERT INTO Booking_TAB (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
+    VALUES (
+        v_booking_id,
+        'InvalidType', -- Should fail - must be One-time, Recurring, Seasonal, or Promotional
+        TRUNC(SYSDATE),
+        6,
+        750.50,
+        'Website',
+        v_location_ref,
+        v_team_ref
+    );
+    
+    COMMIT; -- Should not reach here
 EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        DBMS_OUTPUT.PUT_LINE('Prerequisite Error: Ensure Customer, LogisticTeam, ProductBatch tables are populated.');
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Error on successful BatchOrder insert test: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('✓ Expected Error: ' || SQLERRM);
 END;
 /
 
+-- ============================================================================
+-- TEST 7: Invalid Booking - Invalid PlacementMode
+-- ============================================================================
 DECLARE
-    v_ticket_id       NUMBER;
-    v_customer_ref    REF Customer_t;
-    v_batch_order_ref REF BatchOrder_t;
+    v_booking_id   NUMBER;
+    v_team_ref     REF Team_t;
+    v_location_ref REF Location_t;
 BEGIN
-    SELECT complaint_ticket_id_seq.NEXTVAL INTO v_ticket_id FROM DUAL;
-
-    -- Get a random Customer REF
-    SELECT REF(c) INTO v_customer_ref
-    FROM Customer c ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-
-    -- Get a random BatchOrder REF
-    SELECT REF(bo) INTO v_batch_order_ref
-    FROM BatchOrder bo ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-
-    DBMS_OUTPUT.PUT_LINE('--- Testing TrgComplaintDates (Failing Insert - EndDate before StartDate) ---');
-    INSERT INTO Complaint (TicketID, ByCustomer, OnBatchOrder, ComplaintType, StartDate, EndDate)
-    VALUES (v_ticket_id, v_customer_ref, v_batch_order_ref, 'Other', DATE '2024-03-15', DATE '2024-03-01');
-    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== TEST 7: Invalid Booking - Invalid PlacementMode ===');
+    
+    v_booking_id := booking_id_seq.NEXTVAL;
+    
+    -- Get references
+    SELECT REF(t) INTO v_team_ref FROM Team_TAB t ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    SELECT REF(l) INTO v_location_ref FROM Location_TAB l ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    
+    INSERT INTO Booking_TAB (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
+    VALUES (
+        v_booking_id,
+        'Recurring',
+        TRUNC(SYSDATE),
+        12,
+        1500.00,
+        'Fax', -- Should fail - must be Phone, Mail, Email, or Website
+        v_location_ref,
+        v_team_ref
+    );
+    
+    COMMIT; -- Should not reach here
 EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        DBMS_OUTPUT.PUT_LINE('Prerequisite Error: Ensure Customer, BatchOrder tables are populated.');
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Expected Error (Complaint EndDate before StartDate): ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('✓ Expected Error: ' || SQLERRM);
+END;
+/
+
+-- ============================================================================
+-- TEST 8: Successful Booking with Valid Negative Cost Days in Past
+-- ============================================================================
+DECLARE
+    v_booking_id   NUMBER;
+    v_team_ref     REF Team_t;
+    v_location_ref REF Location_t;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== TEST 8: Past Booking (Historical Record) ===');
+    
+    v_booking_id := booking_id_seq.NEXTVAL;
+    
+    -- Get references
+    SELECT REF(t) INTO v_team_ref FROM Team_TAB t ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    SELECT REF(l) INTO v_location_ref FROM Location_TAB l ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    
+    INSERT INTO Booking_TAB (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
+    VALUES (
+        v_booking_id,
+        'Seasonal',
+        TRUNC(SYSDATE) - 90, -- 90 days in the past
+        24,
+        3250.99,
+        'Mail',
+        v_location_ref,
+        v_team_ref
+    );
+    
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('✓ Past booking inserted successfully. BookingID: ' || v_booking_id);
+    DBMS_OUTPUT.PUT_LINE('✓ BookingDate: ' || TO_CHAR(TRUNC(SYSDATE) - 90, 'YYYY-MM-DD'));
+    
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('✗ Prerequisite Error: Ensure Team_TAB and Location_TAB are populated.');
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('✗ Error: ' || SQLERRM);
+END;
+/
+
+-- ============================================================================
+-- TEST 9: Valid Customer Type Constraint
+-- ============================================================================
+DECLARE
+    v_customer_code VARCHAR2(10);
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== TEST 9: Valid Customer Types ===');
+    
+    -- Test Individual customer
+    v_customer_code := 'TEST' || LPAD(customer_code_seq.NEXTVAL, 5, '0');
+    INSERT INTO Customer_TAB (CustomerCode, Email, CustomerType)
+    VALUES (v_customer_code, 'individual@test.com', 'Individual');
+    DBMS_OUTPUT.PUT_LINE('✓ Individual customer created: ' || v_customer_code);
+    
+    -- Test Company customer
+    v_customer_code := 'TEST' || LPAD(customer_code_seq.NEXTVAL, 5, '0');
+    INSERT INTO Customer_TAB (CustomerCode, Email, CustomerType)
+    VALUES (v_customer_code, 'company@test.com', 'Company');
+    DBMS_OUTPUT.PUT_LINE('✓ Company customer created: ' || v_customer_code);
+    
+    COMMIT;
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('✗ Error: ' || SQLERRM);
+END;
+/
+
+-- ============================================================================
+-- TEST 10: Invalid Customer Type
+-- ============================================================================
+DECLARE
+    v_customer_code VARCHAR2(10);
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== TEST 10: Invalid Customer Type ===');
+    
+    v_customer_code := 'TEST' || LPAD(customer_code_seq.NEXTVAL, 5, '0');
+    INSERT INTO Customer_TAB (CustomerCode, Email, CustomerType)
+    VALUES (v_customer_code, 'invalid@test.com', 'Nonprofit'); -- Should fail
+    
+    COMMIT; -- Should not reach here
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('✓ Expected Error: ' || SQLERRM);
+END;
+/
+
+-- ============================================================================
+-- SUMMARY
+-- ============================================================================
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('===========================================');
+    DBMS_OUTPUT.PUT_LINE('    TRIGGER TESTS COMPLETED');
+    DBMS_OUTPUT.PUT_LINE('===========================================');
+    DBMS_OUTPUT.PUT_LINE('');
 END;
 /

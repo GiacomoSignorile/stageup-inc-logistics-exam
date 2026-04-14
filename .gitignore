@@ -1,6 +1,6 @@
 .venv/
 .webapp/
-webapp/__pycache__/
-webapp/*.pyc
+**/__pycache__/
+**/*.pyc
 .env
 !.env.example

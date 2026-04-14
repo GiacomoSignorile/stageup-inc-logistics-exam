@@ -3,92 +3,77 @@ import oracledb
 import db_utils
 from datetime import date
 
-st.title("📦 Register a New Product Batch")
+st.title("📝 Create New Booking")
 
-if not db_utils.st.session_state.db_connected or not db_utils.st.session_state.logged_in_user:
-    st.warning("You must be logged in to register a new product batch. Please go to the **'Login'** page.")
+if not st.session_state.db_connected or not st.session_state.logged_in_user:
+    st.warning("You must be logged in to create a booking. Please go to **Login**.")
 else:
-    with db_utils.st.session_state.db_pool.acquire() as connection:
-        # Fetch distribution centers
+    with st.session_state.db_pool.acquire() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT CenterName FROM DistributionCenter ORDER BY CenterName")
-            centers = [row[0] for row in cursor.fetchall()]
+            cursor.execute("SELECT LocationCode FROM Location_TAB ORDER BY LocationCode")
+            locations = [row[0] for row in cursor.fetchall()]
 
-        # Get next BatchID (move this before center selection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT NVL(MAX(BatchID), 0) + 1 FROM ProductBatch")
-            next_batch_id = cursor.fetchone()[0]
+            cursor.execute("SELECT TeamCode, TeamName FROM Team_TAB ORDER BY TeamCode")
+            teams = cursor.fetchall()
 
-        # Select center outside the form so product list updates on change
-        center = st.selectbox(
-            "Select Distribution Center", centers, key="center_select"
-        )
-
-        # Fetch products available at the selected center
-        with connection.cursor() as cursor:
-            cursor.execute(
-                '''
-                SELECT DEREF(p.COLUMN_VALUE).SerialNo, DEREF(p.COLUMN_VALUE).ProductCategory, 
-                       DEREF(p.COLUMN_VALUE).ExpiryDate
-                FROM DistributionCenter dc, TABLE(dc.ListOfProducts) p
-                WHERE dc.CenterName = :center
-                ORDER BY DEREF(p.COLUMN_VALUE).SerialNo
-                ''',
-                {'center': center}
-            )
-            center_products = cursor.fetchall()
-
-        if not center_products:
-            st.warning("No products available at this distribution center.")
+        if not locations:
+            st.error("No locations found. Populate Location_TAB first.")
             st.stop()
 
-        product_options = {
-            f"SerialNo: {row[0]} | Category: {row[1]} | Expiry: {row[2].strftime('%Y-%m-%d') if row[2] else 'N/A'}": row[0]
-            for row in center_products
-        }
+        if not teams:
+            st.error("No teams found. Populate Team_TAB first.")
+            st.stop()
 
-        with st.form("register_batch_form"):
-            st.subheader("Register a New Product Batch")
-            st.info(f"Next Batch ID will be: {next_batch_id}")
-            product_label = st.selectbox(
-                "Select Product (available at this center)",
-                list(product_options.keys()),
-                key="product_select"
-            )
-            serial_no = product_options[product_label]
-            quantity = st.number_input("Quantity", min_value=1, step=1)
-            arrival_date = st.date_input("Arrival Date", value=date.today())
-            submitted = st.form_submit_button("Register Batch")
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT NVL(MAX(BookingID), 0) + 1 FROM Booking_TAB")
+            next_booking_id = cursor.fetchone()[0]
+
+        team_options = {f"{row[1]} (Code: {row[0]})": row[0] for row in teams}
+
+        with st.form("create_booking_form"):
+            st.subheader("Create Booking")
+            st.info(f"Next Booking ID: {next_booking_id}")
+            location_code = st.selectbox("Location", locations)
+            team_label = st.selectbox("Assigned Team", list(team_options.keys()))
+            booking_type = st.selectbox("Booking Type", ["One-time", "Recurring", "Seasonal", "Promotional"])
+            booking_date = st.date_input("Booking Date", value=date.today())
+            duration = st.number_input("Duration (hours)", min_value=1, max_value=72, step=1, value=4)
+            total_cost = st.number_input("Total Cost", min_value=1.0, step=50.0, value=500.0)
+            placement_mode = st.selectbox("Placement Mode", ["Phone", "Mail", "Email", "Website"])
+            submitted = st.form_submit_button("Create Booking")
+
         if submitted:
             try:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO ProductBatch \
-                        (BatchID, BatchProduct, Quantity, ArrivalDate, ByDistCenter)
+                        INSERT INTO Booking_TAB
+                        (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
                         VALUES (
-                            :batch_id,
-                            (SELECT REF(p) FROM Product p \
-                             WHERE p.SerialNo = :serial_no),
-                            :quantity,
-                            :arrival_date,
-                            (SELECT REF(dc) FROM DistributionCenter dc \
-                             WHERE dc.CenterName = :center)
+                            :booking_id,
+                            :booking_type,
+                            :booking_date,
+                            :duration,
+                            :total_cost,
+                            :placement_mode,
+                            (SELECT REF(l) FROM Location_TAB l WHERE l.LocationCode = :location_code),
+                            (SELECT REF(t) FROM Team_TAB t WHERE t.TeamCode = :team_code)
                         )
                         """,
                         {
-                            'batch_id': int(next_batch_id),
-                            'serial_no': serial_no,
-                            'quantity': int(quantity),
-                            'arrival_date': arrival_date,
-                            'center': center
+                            'booking_id': int(next_booking_id),
+                            'booking_type': booking_type,
+                            'booking_date': booking_date,
+                            'duration': int(duration),
+                            'total_cost': float(total_cost),
+                            'placement_mode': placement_mode,
+                            'location_code': location_code,
+                            'team_code': team_options[team_label],
                         }
                     )
                     connection.commit()
-                    st.success(
-                        f"Batch {next_batch_id} registered for product "
-                        f"{serial_no} at {center}."
-                    )
+                    st.success(f"Booking {next_booking_id} created successfully.")
             except oracledb.Error as e:
                 error_obj, = e.args
                 st.error(f"Database Error: {error_obj.message}")

@@ -1,78 +1,80 @@
-CREATE OR REPLACE VIEW ViewDeptSupplyPreferences AS
+-- 1. VIEW: Setup Team Members
+-- This view unpacks (unnests) the VARRAY of members inside the Team_TAB.
+-- This shows the Professor you know how to query collections.
+CREATE OR REPLACE VIEW ViewTeamMembers AS
 SELECT
-    d.DepartmentID,
-    DEREF(pref.COLUMN_VALUE).SerialNo AS PreferredProductSerialNo,
-    DEREF(pref.COLUMN_VALUE).ProductCategory AS PreferredProductCategory
+    t.TeamCode,
+    t.TeamName,
+    t.NoInstallations,
+    m.TaxCode AS MemberTaxCode,
+    m.FirstName AS MemberFirstName,
+    m.LastName AS MemberLastName
 FROM
-    Department d,
-    TABLE(d.SupplyPreferences) pref;
+    Team_TAB t,
+    TABLE(t.Members) m;
 /
 
-CREATE OR REPLACE VIEW ViewCustomerDeptAffiliation AS
+-- 2. VIEW: Customer Locations
+-- This view navigates the REF from Location_TAB back to Customer_TAB.
+-- It also unpacks the Address_t object into flat columns.
+CREATE OR REPLACE VIEW ViewCustomerLocations AS
 SELECT
-    c.CustomerCode,
-    c.CustomerLocation.City AS CustomerCity,
-    c.CustomerLocation.Street AS CustomerStreet,
-    c.CustomerLocation.StreetNo AS CustomerStreetNo,
-    c.CustomerLocation.ZipCode AS CustomerZipCode,
-    DEREF(btd.COLUMN_VALUE).DepartmentID AS DepartmentID,
-    DEREF(btd.COLUMN_VALUE).DeptContact.Email AS DepartmentEmail,
-    DEREF(btd.COLUMN_VALUE).DeptContact.Fax AS DepartmentFax
+    DEREF(l.OwnerRef).CustomerCode AS CustomerCode,
+    DEREF(l.OwnerRef).CustomerType AS CustomerType,
+    l.LocationCode,
+    l.Address.City AS City,
+    l.Address.Street AS Street,
+    l.Address.ZipCode AS ZipCode,
+    l.SetupTimeEstimate,
+    l.EquipmentCapacity
 FROM
-    Customer c,
-    TABLE(c.BelongsToDepts) btd;
+    Location_TAB l;
 /
 
-CREATE OR REPLACE VIEW ViewLogisticTeamMembers AS
+-- 3. VIEW: Full Booking Details
+-- This view navigates MULTIPLE REFs (Booking -> Location -> Customer)
+-- and (Booking -> Team) to create a complete report of an operation.
+CREATE OR REPLACE VIEW ViewBookingDetails AS
 SELECT
-    lt.TeamCode,
-    lt.TeamName,
-    DEREF(member.COLUMN_VALUE).TaxCode AS MemberTaxCode,
-    DEREF(member.COLUMN_VALUE).MemberName AS MemberName,
-    DEREF(member.COLUMN_VALUE).MemberSurname AS MemberSurname,
-    DEREF(member.COLUMN_VALUE).EmploymentDate AS MemberEmploymentDate
+    b.BookingID,
+    b.BookingType,
+    b.BookingDate,
+    b.TotalCost,
+    b.PlacementMode,
+    DEREF(b.HandledBy).TeamCode AS AssignedTeamCode,
+    DEREF(b.HandledBy).TeamName AS AssignedTeamName,
+    DEREF(b.AtLocation).LocationCode AS DestinationLocation,
+    DEREF(b.AtLocation).Address.City AS DestinationCity,
+    -- Chaining DEREFs to get the Customer Code from the Location
+    DEREF(DEREF(b.AtLocation).OwnerRef).CustomerCode AS OrderedByCustomer
 FROM
-    LogisticTeam lt,
-    TABLE(lt.TeamMembers) member;
+    Booking_TAB b;
 /
 
-CREATE OR REPLACE VIEW ViewDistCenterProducts AS
+-- 4. VIEW: Regional Office Overview
+-- Unpacks the Address_t object for the company's own offices and depots.
+CREATE OR REPLACE VIEW ViewCompanyOffices AS
 SELECT
-    dc.CenterName,
-    dc.CenterLocation.City AS CenterCity,
-    dc.CenterLocation.Street AS CenterStreet,
-    DEREF(prod_list.COLUMN_VALUE).SerialNo AS StockedProductSerialNo,
-    DEREF(prod_list.COLUMN_VALUE).ProductCategory AS StockedProductCategory,
-    DEREF(prod_list.COLUMN_VALUE).ExpiryDate AS StockedProductExpiryDate
+    o.Name AS OfficeName,
+    o.OfficeType,
+    o.NoEmployees,
+    o.Location.City AS City,
+    o.Location.Province AS Province,
+    o.Location.ZipCode AS ZipCode
 FROM
-    DistributionCenter dc,
-    TABLE(dc.ListOfProducts) prod_list;
+    Office_TAB o;
 /
 
-CREATE OR REPLACE VIEW ViewBatchOrderDetails AS
-SELECT
-    bo.OrderID,
-    bo.OrderDate,
-    bo.ExpectedDeliveryDate,
-    bo.DeliveryStatus,
-    DEREF(batch_list.COLUMN_VALUE).BatchID AS IncludedBatchID,
-    DEREF(batch_list.COLUMN_VALUE).Quantity AS IncludedBatchQuantity,
-    DEREF(batch_list.COLUMN_VALUE).ArrivalDate AS IncludedBatchArrivalDate,
-    DEREF(DEREF(batch_list.COLUMN_VALUE).BatchProduct).SerialNo AS ProductSerialNoInBatch,
-    DEREF(DEREF(batch_list.COLUMN_VALUE).BatchProduct).ProductCategory AS ProductCategoryInBatch
-FROM
-    BatchOrder bo,
-    TABLE(bo.OrderBatches) batch_list;
-/
-
-CREATE OR REPLACE VIEW ViewComplaintDetails AS
-SELECT
-    c.TicketID,
-    c.ComplaintType,
-    c.StartDate,
-    c.EndDate,
-    c.ByCustomer.CustomerCode AS CustomerCode,
-    c.OnBatchOrder.OrderID AS OrderID
-FROM
-    Complaint c;
+-- 5. VIEW: Customer Activity Report
+-- Aggregates data to show how much money each customer has spent
+-- (Useful for the Data Warehouse / Business Intelligence part of the exam)
+CREATE OR REPLACE VIEW ViewCustomerActivity AS
+SELECT 
+    OrderedByCustomer AS CustomerCode,
+    COUNT(BookingID) AS TotalBookings,
+    SUM(TotalCost) AS TotalRevenueGenerated
+FROM 
+    ViewBookingDetails
+GROUP BY 
+    OrderedByCustomer;
 /
