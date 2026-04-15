@@ -3,9 +3,11 @@ import oracledb
 import db_utils
 from datetime import date, timedelta
 
+db_utils.ensure_session_state()
+
 st.title("🚚 Update Booking Details")
 
-if not st.session_state.db_connected or not st.session_state.logged_in_user:
+if not st.session_state.get("db_connected") or not st.session_state.get("logged_in_user"):
     st.warning("You must be logged in to update bookings. Please go to **Login**.")
 else:
     with st.session_state.db_pool.acquire() as connection:
@@ -19,8 +21,8 @@ else:
                        b.TotalCost,
                        b.PlacementMode,
                        DEREF(b.AtLocation).LocationCode,
-                       DEREF(b.HandledBy).TeamCode,
-                       DEREF(b.HandledBy).TeamName
+                      DEREF(b.HandledBy).Name,
+                      DEREF(b.HandledBy).OfficeType
                 FROM Booking_TAB b
                 ORDER BY b.BookingID
                 """
@@ -49,7 +51,7 @@ else:
         booking_options = {
             (
                 f"Booking {row[0]} | {row[1]} | Date: {row[2].strftime('%Y-%m-%d')} "
-                f"| Team: {row[8]}"
+                f"| Office: {row[7]}"
             ): row
             for row in bookings
         }
@@ -76,7 +78,7 @@ else:
             team_label = st.selectbox(
                 "Assigned Team",
                 list(team_options.keys()),
-                index=list(team_options.values()).index(selected[7]),
+                index=0,
             )
 
             quick_shift = st.checkbox("Shift booking date by +2 days", value=False)
@@ -95,7 +97,7 @@ else:
                             TotalCost = :total_cost,
                             PlacementMode = :placement_mode,
                             AtLocation = (SELECT REF(l) FROM Location_TAB l WHERE l.LocationCode = :location_code),
-                            HandledBy = (SELECT REF(t) FROM Team_TAB t WHERE t.TeamCode = :team_code)
+                            HandledBy = (SELECT t.OfficeRef FROM Team_TAB t WHERE t.TeamCode = :team_code)
                         WHERE BookingID = :booking_id
                         """,
                         {

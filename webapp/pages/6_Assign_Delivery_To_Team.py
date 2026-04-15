@@ -2,9 +2,11 @@ import streamlit as st
 import oracledb
 import db_utils
 
+db_utils.ensure_session_state()
+
 st.title("👥 Reassign Booking Team")
 
-if not st.session_state.db_connected or not st.session_state.logged_in_user:
+if not st.session_state.get("db_connected") or not st.session_state.get("logged_in_user"):
     st.warning("You must be logged in to assign teams. Please go to **Login**.")
 else:
     with st.session_state.db_pool.acquire() as connection:
@@ -14,8 +16,7 @@ else:
                 SELECT b.BookingID,
                        b.BookingType,
                        b.BookingDate,
-                       DEREF(b.HandledBy).TeamCode,
-                       DEREF(b.HandledBy).TeamName
+                      DEREF(b.HandledBy).Name
                 FROM Booking_TAB b
                 ORDER BY b.BookingID
                 """
@@ -25,7 +26,7 @@ else:
         booking_options = {
             (
                 f"BookingID: {row[0]} | Type: {row[1]} | Date: {row[2].strftime('%Y-%m-%d')} "
-                f"| Team: {row[4]} (Code: {row[3]})"
+                f"| Office: {row[3]}"
             ): row[0]
             for row in bookings
         }
@@ -72,7 +73,7 @@ else:
                         """
                         UPDATE Booking_TAB
                         SET HandledBy = (
-                            SELECT REF(t)
+                            SELECT t.OfficeRef
                             FROM Team_TAB t
                             WHERE t.TeamCode = :team_code
                         )
@@ -84,7 +85,7 @@ else:
                         }
                     )
                     connection.commit()
-                    st.success(f"Booking {booking_options[booking_label]} assigned to {team_label}.")
+                    st.success(f"Booking {booking_options[booking_label]} assigned to the office of {team_label}.")
             except oracledb.Error as e:
                 error_obj, = e.args
                 st.error(f"Database Error: {error_obj.message}")

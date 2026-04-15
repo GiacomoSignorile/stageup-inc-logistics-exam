@@ -6,12 +6,16 @@ BEGIN
         SELECT 'TABLE', 'CUSTOMER_TAB' FROM dual UNION ALL
         SELECT 'TABLE', 'TEAM_TAB' FROM dual UNION ALL
         SELECT 'TABLE', 'OFFICE_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'MUNICIPALITY_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'REGION_TAB' FROM dual UNION ALL
         SELECT 'TYPE', 'BOOKING_T' FROM dual UNION ALL
         SELECT 'TYPE', 'LOCATION_T' FROM dual UNION ALL
         SELECT 'TYPE', 'CUSTOMER_T' FROM dual UNION ALL
         SELECT 'TYPE', 'TEAM_T' FROM dual UNION ALL
         SELECT 'TYPE', 'MEMBER_VA' FROM dual UNION ALL
         SELECT 'TYPE', 'MEMBER_T' FROM dual UNION ALL
+        SELECT 'TYPE', 'MUNICIPALITY_T' FROM dual UNION ALL
+        SELECT 'TYPE', 'REGION_T' FROM dual UNION ALL
         SELECT 'TYPE', 'ADDRESS_T' FROM dual
     ) LOOP
         BEGIN
@@ -30,7 +34,20 @@ BEGIN
 END;
 /
 
--- 2. BASIC COMPOSITE TYPES
+-- 2. BASIC COMPOSITE TYPES - GEOGRAPHY
+CREATE OR REPLACE TYPE Region_t AS OBJECT (
+    RegionCode NUMBER,
+    RegionName VARCHAR2(30)
+);
+/
+
+CREATE OR REPLACE TYPE Municipality_t AS OBJECT (
+    MunicipalityCode NUMBER,
+    MunicipalityName VARCHAR2(30),
+    RegionRef REF Region_t
+);
+/
+
 CREATE OR REPLACE TYPE Address_t AS OBJECT (
     Street VARCHAR2(30),
     StreetNo VARCHAR2(5),
@@ -40,7 +57,16 @@ CREATE OR REPLACE TYPE Address_t AS OBJECT (
 );
 /
 
--- 3. HUMAN RESOURCES (Using Inheritance and VARRAY for BR1)
+-- 3. GEOGRAPHY & OFFICES (declared before Team_t which references it)
+CREATE OR REPLACE TYPE Office_t AS OBJECT (
+    Name VARCHAR2(30),
+    Location Address_t,
+    NoEmployees NUMBER,
+    OfficeType VARCHAR2(15)
+);
+/
+
+-- 4. HUMAN RESOURCES (Using Inheritance and VARRAY for BR1)
 CREATE OR REPLACE TYPE Member_t AS OBJECT (
     TaxCode CHAR(16),
     FirstName VARCHAR2(25),
@@ -57,16 +83,9 @@ CREATE OR REPLACE TYPE Team_t AS OBJECT (
     TeamCode NUMBER,
     TeamName VARCHAR2(30),
     NoInstallations NUMBER,
-    Members Member_VA
-);
-/
-
--- 4. GEOGRAPHY & OFFICES
-CREATE OR REPLACE TYPE Office_t AS OBJECT (
-    Name VARCHAR2(30),
-    Location Address_t,
-    NoEmployees NUMBER,
-    OfficeType VARCHAR2(15)
+    Members Member_VA,
+    RegionRef REF Region_t,
+    OfficeRef REF Office_t
 );
 /
 
@@ -96,6 +115,6 @@ CREATE OR REPLACE TYPE Booking_t AS OBJECT (
     TotalCost NUMBER(10,2),
     PlacementMode VARCHAR2(15),
     AtLocation REF Location_t,
-    HandledBy REF Team_t
+    HandledBy REF Office_t
 );
 /

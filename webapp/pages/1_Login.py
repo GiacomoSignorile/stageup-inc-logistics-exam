@@ -1,6 +1,8 @@
 import streamlit as st
 import db_utils
 
+db_utils.ensure_session_state()
+
 st.title("🔐 Login to StageUp Event Setup Database")
 st.markdown("Select your username and enter your password to connect to the database.")
 
@@ -26,7 +28,7 @@ with st.form("login_form"):
             st.rerun() # Rerun to update sidebar and state
 
 # Health Check for DB Connection
-if st.session_state.db_connected and st.session_state.db_pool:
+if st.session_state.get("db_connected") and st.session_state.get("db_pool"):
     st.subheader("Quick Test Query")
     if st.button("Get DB SYSDATE"):
         try:
@@ -39,7 +41,7 @@ if st.session_state.db_connected and st.session_state.db_pool:
             st.error(f"Error performing test query: {e}")
 
 # --- Logout Button ---
-if st.session_state.logged_in_user:
+if st.session_state.get("logged_in_user"):
     st.markdown("---")
     st.write(f"Logged in as: **{st.session_state.logged_in_user}**")
     if st.button("Logout"):

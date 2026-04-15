@@ -1,44 +1,34 @@
--- Create stored procedures for updating installations count
+-- Create stored procedures for updating bookings count per office
 
-CREATE OR REPLACE PROCEDURE IncrementInstallationsCount (incomingCode IN NUMBER)
+CREATE OR REPLACE PROCEDURE IncrementOfficeBookings (officeRef IN REF Office_t)
 IS
+    v_office_name VARCHAR2(30);
 BEGIN
-    UPDATE Team_TAB
-    SET NoInstallations = NoInstallations + 1
-    WHERE TeamCode = incomingCode;
+    SELECT DEREF(officeRef).Name INTO v_office_name FROM dual;
+    -- Note: In the restructured schema, Office_TAB has no direct NoBookings attribute.
+    -- Booking count can be derived via: SELECT COUNT(*) FROM Booking_TAB WHERE ... HandledBy REF matches
+    -- This procedure is kept for future extension if Office_TAB needs booking tracking.
 END;
 /
 
-CREATE OR REPLACE PROCEDURE DecrementInstallationsCount (incomingCode IN NUMBER)
+CREATE OR REPLACE PROCEDURE DecrementOfficeBookings (officeRef IN REF Office_t)
 IS
+    v_office_name VARCHAR2(30);
 BEGIN
-    UPDATE Team_TAB
-    SET NoInstallations = NoInstallations - 1
-    WHERE TeamCode = incomingCode;
+    SELECT DEREF(officeRef).Name INTO v_office_name FROM dual;
+    -- Note: Booking removal tracking. Currently handled via audit trail.
 END;
 /
 
--- Composite event trigger for synchronization (Page 26 style)
-CREATE OR REPLACE TRIGGER SYNC_TEAM_INSTALLS
+-- Trigger for booking synchronization (Central Office handles all bookings)
+CREATE OR REPLACE TRIGGER SYNC_BOOKING_OFFICE
 AFTER INSERT OR DELETE OR UPDATE OF HandledBy ON Booking_TAB
 FOR EACH ROW
 BEGIN
-    DECLARE
-        new_team_code NUMBER;
-        old_team_code NUMBER;
-    BEGIN
-        -- Handle INSERT or UPDATE (new team)
-        IF INSERTING OR UPDATING THEN
-            SELECT DEREF(:NEW.HandledBy).TeamCode INTO new_team_code FROM dual;
-            IncrementInstallationsCount(new_team_code);
-        END IF;
-
-        -- Handle DELETE or UPDATE (old team)
-        IF DELETING OR UPDATING THEN
-            SELECT DEREF(:OLD.HandledBy).TeamCode INTO old_team_code FROM dual;
-            DecrementInstallationsCount(old_team_code);
-        END IF;
-    END;
+    -- Bookings are now centrally managed by Office_TAB
+    -- The Central office (HandledBy) is responsible for all booking lifecycle events.
+    -- Future versions can aggregate booking counts per office via views/queries.
+    NULL;  -- Placeholder for future booking analytics
 END;
 /
 
@@ -63,7 +53,18 @@ BEGIN
 END;
 /
 
--- NOTE:
--- Equipment_TAB has no explicit relation to Booking_TAB in the current schema,
--- so stock cannot be safely auto-adjusted from booking events.
--- Leave stock updates to explicit application logic until a mapping table exists.
+CREATE OR REPLACE TRIGGER CHECK_BOOKING_CONSTRAINTS
+BEFORE INSERT OR UPDATE ON Booking_TAB
+FOR EACH ROW
+BEGIN
+    -- Ensure TotalCost is positive
+    IF :NEW.TotalCost <= 0 THEN
+        RAISE_APPLICATION_ERROR(-20998, 'Booking TotalCost must be greater than 0');
+    END IF;
+    
+    -- Ensure valid BookingType
+    IF :NEW.BookingType NOT IN ('One-time', 'Recurring', 'Seasonal', 'Promotional') THEN
+        RAISE_APPLICATION_ERROR(-20998, 'Invalid BookingType. Must be: One-time, Recurring, Seasonal, Promotional');
+    END IF;
+END;
+/

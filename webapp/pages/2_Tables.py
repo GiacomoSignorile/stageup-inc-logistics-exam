@@ -4,6 +4,7 @@ import oracledb
 import db_utils
 from app_config import TABLES_PAGE_TITLE
 
+db_utils.ensure_session_state()
 
 st.title(f"🗄️ {TABLES_PAGE_TITLE}")
 
@@ -19,11 +20,11 @@ def show_query(connection, label, sql):
 
             columns = [desc[0] for desc in cursor.description]
             df = pd.DataFrame(rows, columns=columns)
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df, width="stretch")
             st.info(f"Showing {len(df)} rows.")
 
 
-if not st.session_state.db_connected or not st.session_state.logged_in_user:
+if not st.session_state.get("db_connected") or not st.session_state.get("logged_in_user"):
     st.warning("You must be logged in to view this page. Please go to **Login**.")
 else:
     st.write(f"Viewing data as: **{st.session_state.logged_in_user}**")
@@ -60,7 +61,7 @@ else:
                 "Team_TAB",
                 """
                 SELECT TeamCode, TeamName, NoInstallations,
-                       CARDINALITY(Members) AS TeamSize
+                      (SELECT COUNT(*) FROM TABLE(CAST(Members AS Member_VA))) AS TeamSize
                 FROM Team_TAB
                 ORDER BY TeamCode
                 """,
@@ -102,7 +103,7 @@ else:
                        b.TotalCost,
                        b.PlacementMode,
                        DEREF(b.AtLocation).LocationCode AS LocationCode,
-                       DEREF(b.HandledBy).TeamCode AS TeamCode
+                      DEREF(b.HandledBy).Name AS HandlingOffice
                 FROM Booking_TAB b
                 ORDER BY b.BookingID
                 """,

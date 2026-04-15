@@ -2,9 +2,11 @@ import streamlit as st
 import oracledb
 import db_utils
 
+db_utils.ensure_session_state()
+
 st.title("⏰ Upcoming Bookings (Next 30 Days)")
 
-if not st.session_state.db_connected or not st.session_state.logged_in_user:
+if not st.session_state.get("db_connected") or not st.session_state.get("logged_in_user"):
     st.warning("You must be logged in to view this report. Please go to **Login**.")
 else:
     with st.session_state.db_pool.acquire() as connection:
@@ -19,7 +21,7 @@ else:
                        b.PlacementMode,
                        DEREF(b.AtLocation).LocationCode,
                        DEREF(b.AtLocation).Address.City,
-                       DEREF(b.HandledBy).TeamName,
+                      DEREF(b.HandledBy).Name,
                        DEREF(DEREF(b.AtLocation).OwnerRef).CustomerCode
                 FROM Booking_TAB b
                 WHERE b.BookingDate BETWEEN TRUNC(SYSDATE) AND TRUNC(SYSDATE) + 30
@@ -41,10 +43,10 @@ else:
                         "Placement": row[5],
                         "Location": row[6],
                         "City": row[7],
-                        "Team": row[8],
+                        "Office": row[8],
                         "Customer": row[9],
                     }
                     for row in rows
                 ],
-                use_container_width=True
+                width="stretch"
             )

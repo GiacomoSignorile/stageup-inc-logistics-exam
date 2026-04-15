@@ -19,7 +19,11 @@ services:
       bash -c "
         /opt/oracle/runOracle.sh &
 
-        sleep 60 
+        # Wait until Oracle accepts SQL*Plus connections.
+        until echo 'SELECT 1 FROM DUAL;' | sqlplus -L -S system/$$ORACLE_PWD@$$ORACLE_SID >/dev/null 2>&1; do
+          echo 'Waiting for Oracle to become ready...'
+          sleep 5
+        done
 
         # Run each of your scripts in sequence
         sqlplus -S system/$$ORACLE_PWD@$$ORACLE_SID @/scripts/00_stageupdba.sql

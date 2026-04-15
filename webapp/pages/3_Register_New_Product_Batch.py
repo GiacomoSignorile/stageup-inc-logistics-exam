@@ -3,9 +3,11 @@ import oracledb
 import db_utils
 from datetime import date
 
+db_utils.ensure_session_state()
+
 st.title("📝 Create New Booking")
 
-if not st.session_state.db_connected or not st.session_state.logged_in_user:
+if not st.session_state.get("db_connected") or not st.session_state.get("logged_in_user"):
     st.warning("You must be logged in to create a booking. Please go to **Login**.")
 else:
     with st.session_state.db_pool.acquire() as connection:
@@ -58,7 +60,7 @@ else:
                             :total_cost,
                             :placement_mode,
                             (SELECT REF(l) FROM Location_TAB l WHERE l.LocationCode = :location_code),
-                            (SELECT REF(t) FROM Team_TAB t WHERE t.TeamCode = :team_code)
+                            (SELECT t.OfficeRef FROM Team_TAB t WHERE t.TeamCode = :team_code)
                         )
                         """,
                         {

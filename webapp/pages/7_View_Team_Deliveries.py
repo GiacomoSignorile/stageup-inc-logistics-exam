@@ -2,9 +2,11 @@ import streamlit as st
 import oracledb
 import db_utils
 
+db_utils.ensure_session_state()
+
 st.title("📋 View Team Bookings")
 
-if not st.session_state.db_connected or not st.session_state.logged_in_user:
+if not st.session_state.get("db_connected") or not st.session_state.get("logged_in_user"):
     st.warning("You must be logged in to view reports. Please go to **Login**.")
 else:
     with st.session_state.db_pool.acquire() as connection:
@@ -37,7 +39,7 @@ else:
         if submitted:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT TeamCode, TeamName FROM Team_TAB WHERE TeamCode = :team_code",
+                    "SELECT TeamCode, TeamName, DEREF(OfficeRef).Name FROM Team_TAB WHERE TeamCode = :team_code",
                     {'team_code': team_code}
                 )
                 teams = cursor.fetchall()
@@ -47,6 +49,7 @@ else:
 
             st.markdown(f"**Selected Team Code:** {teams[0][0]}")
             st.markdown(f"### Bookings for Team: {teams[0][1]}")
+            st.markdown(f"**Handled by Office:** {teams[0][2]}")
 
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -60,7 +63,7 @@ else:
                            DEREF(b.AtLocation).LocationCode,
                            DEREF(DEREF(b.AtLocation).OwnerRef).CustomerCode
                     FROM Booking_TAB b
-                    WHERE DEREF(b.HandledBy).TeamCode = :team_code
+                          WHERE b.HandledBy = (SELECT OfficeRef FROM Team_TAB WHERE TeamCode = :team_code)
                     ORDER BY b.BookingID
                     """,
                     {'team_code': team_code}
@@ -84,5 +87,5 @@ else:
                         }
                         for row in bookings
                     ],
-                    use_container_width=True
+                    width="stretch"
                 )

@@ -4,3 +4,4 @@
 **/*.pyc
 .env
 !.env.example
+latex_report/

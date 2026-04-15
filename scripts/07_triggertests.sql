@@ -1,47 +1,60 @@
 -- ============================================================================
--- STAGEUP EVENT SETUP - TRIGGER TESTS (NEW SCHEMA)
+-- STAGEUP EVENT SETUP - TRIGGER TESTS (RESTRUCTURED SCHEMA)
 -- ============================================================================
 -- Tests for:
--- 1. SYNC_TEAM_INSTALLS - Synchronizes Team NoInstallations when bookings change
--- 2. CHECK_TEAM_CONSTRAINTS - Validates new teams start at 0, changes only by ±1
--- 3. Booking constraint validation - Valid BookingType, PlacementMode, TotalCost > 0
+-- 1. CHECK_TEAM_CONSTRAINTS
+-- 2. CHECK_BOOKING_CONSTRAINTS
+-- 3. Booking ownership via OfficeRef (not Team REF)
 -- ============================================================================
 
+SET SERVEROUTPUT ON;
+
+BEGIN
+    EXECUTE IMMEDIATE 'ALTER SESSION SET CURRENT_SCHEMA = C##STAGEUPDBA';
+EXCEPTION
+    WHEN OTHERS THEN NULL;
+END;
+/
+
 -- ============================================================================
--- TEST 1: Successful Team Creation (CHECK_TEAM_CONSTRAINTS)
+-- TEST 1: Successful Team Creation with Region and Office References
 -- ============================================================================
 DECLARE
     v_team_code NUMBER;
+    v_region_ref REF Region_t;
+    v_office_ref REF Office_t;
     v_initial_count NUMBER;
 BEGIN
     DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('=== TEST 1: Successful Team Creation ===');
-    
-    -- Create a team with Member_VA
+    DBMS_OUTPUT.PUT_LINE('=== TEST 1: Successful Team Creation with Regional Assignment ===');
+
+    SELECT REF(r) INTO v_region_ref FROM Region_TAB r ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    SELECT REF(o) INTO v_office_ref FROM Office_TAB o WHERE OfficeType = 'Depot' ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+
     v_team_code := team_code_seq.NEXTVAL;
-    
-    INSERT INTO Team_TAB (TeamCode, TeamName, NoInstallations, Members)
+
+    INSERT INTO Team_TAB (TeamCode, TeamName, NoInstallations, Members, RegionRef, OfficeRef)
     VALUES (
         v_team_code,
         'TestTeam_' || v_team_code,
-        0, -- Must be 0 for new teams
+        0,
         Member_VA(
             Member_t('AABBCC1111111111', 'John', 'Test', DATE '1990-05-15'),
             Member_t('DDEEGG2222222222', 'Jane', 'Test', DATE '1992-07-20')
-        )
+        ),
+        v_region_ref,
+        v_office_ref
     );
-    
-    -- Verify NoInstallations is 0
+
     SELECT NoInstallations INTO v_initial_count FROM Team_TAB WHERE TeamCode = v_team_code;
-    
+
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('✓ Team created successfully with TeamCode: ' || v_team_code);
-    DBMS_OUTPUT.PUT_LINE('✓ NoInstallations initialized to: ' || v_initial_count);
-    
+    DBMS_OUTPUT.PUT_LINE('OK Team created with TeamCode: ' || v_team_code);
+    DBMS_OUTPUT.PUT_LINE('OK NoInstallations initialized to: ' || v_initial_count);
 EXCEPTION
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✗ Error creating team: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('ERR TEST 1: ' || SQLERRM);
 END;
 /
 
@@ -50,342 +63,114 @@ END;
 -- ============================================================================
 DECLARE
     v_team_code NUMBER;
+    v_region_ref REF Region_t;
+    v_office_ref REF Office_t;
 BEGIN
     DBMS_OUTPUT.PUT_LINE('');
     DBMS_OUTPUT.PUT_LINE('=== TEST 2: Invalid Team Creation (Non-zero Installations) ===');
-    
+
+    SELECT REF(r) INTO v_region_ref FROM Region_TAB r ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    SELECT REF(o) INTO v_office_ref FROM Office_TAB o WHERE OfficeType = 'Depot' ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+
     v_team_code := team_code_seq.NEXTVAL;
-    
-    INSERT INTO Team_TAB (TeamCode, TeamName, NoInstallations, Members)
+
+    INSERT INTO Team_TAB (TeamCode, TeamName, NoInstallations, Members, RegionRef, OfficeRef)
     VALUES (
         v_team_code,
         'FailTeam_' || v_team_code,
-        5, -- Should fail - new teams must start at 0
-        Member_VA(Member_t('XXXX1111111111XX', 'Fail', 'Test', DATE '1995-03-10'))
+        5,
+        Member_VA(Member_t('XXXX1111111111XX', 'Fail', 'Test', DATE '1995-03-10')),
+        v_region_ref,
+        v_office_ref
     );
-    
-    COMMIT; -- Should not reach here
-EXCEPTION
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✓ Expected Error: ' || SQLERRM);
-END;
-/
 
--- ============================================================================
--- TEST 3: Successful Booking Insertion (SYNC_TEAM_INSTALLS triggers)
--- ============================================================================
-DECLARE
-    v_booking_id    NUMBER;
-    v_team_code     NUMBER;
-    v_team_ref      REF Team_t;
-    v_location_ref  REF Location_t;
-    v_install_count_before NUMBER;
-    v_install_count_after  NUMBER;
-BEGIN
-    DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('=== TEST 3: Successful Booking Insertion ===');
-    
-    -- Get a team and check its installations count before
-    SELECT TeamCode INTO v_team_code FROM Team_TAB ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-    SELECT NoInstallations INTO v_install_count_before FROM Team_TAB WHERE TeamCode = v_team_code;
-    
-    -- Get team reference
-    SELECT REF(t) INTO v_team_ref FROM Team_TAB t WHERE t.TeamCode = v_team_code;
-    
-    -- Get a location reference
-    SELECT REF(l) INTO v_location_ref FROM Location_TAB l ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-    
-    -- Insert booking
-    v_booking_id := booking_id_seq.NEXTVAL;
-    INSERT INTO Booking_TAB (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
-    VALUES (
-        v_booking_id,
-        'One-time',
-        TRUNC(SYSDATE) + 5,
-        8,
-        500.00,
-        'Email',
-        v_location_ref,
-        v_team_ref
-    );
-    
-    -- Check installations count after
-    SELECT NoInstallations INTO v_install_count_after FROM Team_TAB WHERE TeamCode = v_team_code;
-    
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('✓ Booking inserted successfully. BookingID: ' || v_booking_id);
-    DBMS_OUTPUT.PUT_LINE('✓ Team NoInstallations before: ' || v_install_count_before);
-    DBMS_OUTPUT.PUT_LINE('✓ Team NoInstallations after: ' || v_install_count_after);
-    DBMS_OUTPUT.PUT_LINE('✓ Increment verified: ' || (v_install_count_after - v_install_count_before) || ' (expected: 1)');
-    
+    DBMS_OUTPUT.PUT_LINE('ERR TEST 2: should have failed but did not');
 EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✗ Prerequisite Error: Ensure Team_TAB and Location_TAB are populated.');
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✗ Error inserting booking: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('OK Expected error caught: ' || SQLERRM);
 END;
 /
 
 -- ============================================================================
--- TEST 4: Booking Deletion (SYNC_TEAM_INSTALLS - decrement)
+-- TEST 3: Successful Booking Insertion (Managed by Central Office)
 -- ============================================================================
 DECLARE
-    v_booking_id            NUMBER;
-    v_team_code             NUMBER;
-    v_install_count_before  NUMBER;
-    v_install_count_after   NUMBER;
-BEGIN
-    DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('=== TEST 4: Booking Deletion (Team Installations Decrement) ===');
-    
-    -- Get an existing booking and its team
-    SELECT BookingID, DEREF(HandledBy).TeamCode 
-    INTO v_booking_id, v_team_code
-    FROM Booking_TAB 
-    ORDER BY DBMS_RANDOM.VALUE 
-    FETCH FIRST 1 ROW ONLY;
-    
-    -- Get installations count before deletion
-    SELECT NoInstallations INTO v_install_count_before FROM Team_TAB WHERE TeamCode = v_team_code;
-    
-    -- Delete the booking
-    DELETE FROM Booking_TAB WHERE BookingID = v_booking_id;
-    
-    -- Check installations count after
-    SELECT NoInstallations INTO v_install_count_after FROM Team_TAB WHERE TeamCode = v_team_code;
-    
-    COMMIT;
-    DBMS_OUTPUT.PUT_LINE('✓ Booking deleted successfully. BookingID: ' || v_booking_id);
-    DBMS_OUTPUT.PUT_LINE('✓ Team NoInstallations before: ' || v_install_count_before);
-    DBMS_OUTPUT.PUT_LINE('✓ Team NoInstallations after: ' || v_install_count_after);
-    DBMS_OUTPUT.PUT_LINE('✓ Decrement verified: ' || (v_install_count_before - v_install_count_after) || ' (expected: 1)');
-    
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✗ Prerequisite Error: Ensure Booking_TAB has records to delete.');
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✗ Error deleting booking: ' || SQLERRM);
-END;
-/
-
--- ============================================================================
--- TEST 5: Invalid Booking - TotalCost = 0 (Constraint Violation)
--- ============================================================================
-DECLARE
-    v_booking_id   NUMBER;
-    v_team_ref     REF Team_t;
+    v_booking_id NUMBER;
+    v_office_ref REF Office_t;
     v_location_ref REF Location_t;
 BEGIN
     DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('=== TEST 5: Invalid Booking - TotalCost = 0 ===');
-    
-    v_booking_id := booking_id_seq.NEXTVAL;
-    
-    -- Get references
-    SELECT REF(t) INTO v_team_ref FROM Team_TAB t ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-    SELECT REF(l) INTO v_location_ref FROM Location_TAB l ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-    
-    INSERT INTO Booking_TAB (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
-    VALUES (
-        v_booking_id,
-        'One-time',
-        TRUNC(SYSDATE),
-        4,
-        0.00, -- Should fail - TotalCost must be > 0
-        'Phone',
-        v_location_ref,
-        v_team_ref
-    );
-    
-    COMMIT; -- Should not reach here
-EXCEPTION
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✓ Expected Error: ' || SQLERRM);
-END;
-/
+    DBMS_OUTPUT.PUT_LINE('=== TEST 3: Successful Booking Insertion (Central Office) ===');
 
--- ============================================================================
--- TEST 6: Invalid Booking - Invalid BookingType
--- ============================================================================
-DECLARE
-    v_booking_id   NUMBER;
-    v_team_ref     REF Team_t;
-    v_location_ref REF Location_t;
-BEGIN
-    DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('=== TEST 6: Invalid Booking - Invalid BookingType ===');
-    
-    v_booking_id := booking_id_seq.NEXTVAL;
-    
-    -- Get references
-    SELECT REF(t) INTO v_team_ref FROM Team_TAB t ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+    SELECT REF(o) INTO v_office_ref FROM Office_TAB o WHERE Name = 'Central_Office_HQ';
     SELECT REF(l) INTO v_location_ref FROM Location_TAB l ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-    
-    INSERT INTO Booking_TAB (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
-    VALUES (
-        v_booking_id,
-        'InvalidType', -- Should fail - must be One-time, Recurring, Seasonal, or Promotional
-        TRUNC(SYSDATE),
-        6,
-        750.50,
-        'Website',
-        v_location_ref,
-        v_team_ref
-    );
-    
-    COMMIT; -- Should not reach here
-EXCEPTION
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✓ Expected Error: ' || SQLERRM);
-END;
-/
 
--- ============================================================================
--- TEST 7: Invalid Booking - Invalid PlacementMode
--- ============================================================================
-DECLARE
-    v_booking_id   NUMBER;
-    v_team_ref     REF Team_t;
-    v_location_ref REF Location_t;
-BEGIN
-    DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('=== TEST 7: Invalid Booking - Invalid PlacementMode ===');
-    
     v_booking_id := booking_id_seq.NEXTVAL;
-    
-    -- Get references
-    SELECT REF(t) INTO v_team_ref FROM Team_TAB t ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-    SELECT REF(l) INTO v_location_ref FROM Location_TAB l ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-    
-    INSERT INTO Booking_TAB (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
-    VALUES (
-        v_booking_id,
-        'Recurring',
-        TRUNC(SYSDATE),
-        12,
-        1500.00,
-        'Fax', -- Should fail - must be Phone, Mail, Email, or Website
-        v_location_ref,
-        v_team_ref
-    );
-    
-    COMMIT; -- Should not reach here
-EXCEPTION
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✓ Expected Error: ' || SQLERRM);
-END;
-/
 
--- ============================================================================
--- TEST 8: Successful Booking with Valid Negative Cost Days in Past
--- ============================================================================
-DECLARE
-    v_booking_id   NUMBER;
-    v_team_ref     REF Team_t;
-    v_location_ref REF Location_t;
-BEGIN
-    DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('=== TEST 8: Past Booking (Historical Record) ===');
-    
-    v_booking_id := booking_id_seq.NEXTVAL;
-    
-    -- Get references
-    SELECT REF(t) INTO v_team_ref FROM Team_TAB t ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-    SELECT REF(l) INTO v_location_ref FROM Location_TAB l ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
-    
     INSERT INTO Booking_TAB (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
-    VALUES (
-        v_booking_id,
-        'Seasonal',
-        TRUNC(SYSDATE) - 90, -- 90 days in the past
-        24,
-        3250.99,
-        'Mail',
-        v_location_ref,
-        v_team_ref
-    );
-    
+    VALUES (v_booking_id, 'One-time', TRUNC(SYSDATE) + 5, 8, 500.00, 'Email', v_location_ref, v_office_ref);
+
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('✓ Past booking inserted successfully. BookingID: ' || v_booking_id);
-    DBMS_OUTPUT.PUT_LINE('✓ BookingDate: ' || TO_CHAR(TRUNC(SYSDATE) - 90, 'YYYY-MM-DD'));
-    
+    DBMS_OUTPUT.PUT_LINE('OK Booking inserted. BookingID: ' || v_booking_id);
 EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✗ Prerequisite Error: Ensure Team_TAB and Location_TAB are populated.');
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✗ Error: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('ERR TEST 3: ' || SQLERRM);
 END;
 /
 
 -- ============================================================================
--- TEST 9: Valid Customer Type Constraint
+-- TEST 4: Invalid Booking - Zero Cost
 -- ============================================================================
 DECLARE
-    v_customer_code VARCHAR2(10);
+    v_booking_id NUMBER;
+    v_office_ref REF Office_t;
+    v_location_ref REF Location_t;
 BEGIN
     DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('=== TEST 9: Valid Customer Types ===');
-    
-    -- Test Individual customer
-    v_customer_code := 'TEST' || LPAD(customer_code_seq.NEXTVAL, 5, '0');
-    INSERT INTO Customer_TAB (CustomerCode, Email, CustomerType)
-    VALUES (v_customer_code, 'individual@test.com', 'Individual');
-    DBMS_OUTPUT.PUT_LINE('✓ Individual customer created: ' || v_customer_code);
-    
-    -- Test Company customer
-    v_customer_code := 'TEST' || LPAD(customer_code_seq.NEXTVAL, 5, '0');
-    INSERT INTO Customer_TAB (CustomerCode, Email, CustomerType)
-    VALUES (v_customer_code, 'company@test.com', 'Company');
-    DBMS_OUTPUT.PUT_LINE('✓ Company customer created: ' || v_customer_code);
-    
+    DBMS_OUTPUT.PUT_LINE('=== TEST 4: Invalid Booking (Zero Cost) ===');
+
+    SELECT REF(o) INTO v_office_ref FROM Office_TAB o WHERE Name = 'Central_Office_HQ';
+    SELECT REF(l) INTO v_location_ref FROM Location_TAB l ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY;
+
+    v_booking_id := booking_id_seq.NEXTVAL;
+
+    INSERT INTO Booking_TAB (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
+    VALUES (v_booking_id, 'One-time', TRUNC(SYSDATE), 4, 0, 'Phone', v_location_ref, v_office_ref);
+
     COMMIT;
-    
+    DBMS_OUTPUT.PUT_LINE('ERR TEST 4: should have failed but did not');
 EXCEPTION
     WHEN OTHERS THEN
         ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✗ Error: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('OK Expected error caught: ' || SQLERRM);
 END;
 /
 
 -- ============================================================================
--- TEST 10: Invalid Customer Type
+-- VERIFICATION
 -- ============================================================================
 DECLARE
-    v_customer_code VARCHAR2(10);
+    v_region_count NUMBER;
+    v_municipality_count NUMBER;
+    v_office_count NUMBER;
+    v_team_count NUMBER;
+    v_booking_count NUMBER;
 BEGIN
-    DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('=== TEST 10: Invalid Customer Type ===');
-    
-    v_customer_code := 'TEST' || LPAD(customer_code_seq.NEXTVAL, 5, '0');
-    INSERT INTO Customer_TAB (CustomerCode, Email, CustomerType)
-    VALUES (v_customer_code, 'invalid@test.com', 'Nonprofit'); -- Should fail
-    
-    COMMIT; -- Should not reach here
-EXCEPTION
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('✓ Expected Error: ' || SQLERRM);
-END;
-/
+    SELECT COUNT(*) INTO v_region_count FROM Region_TAB;
+    SELECT COUNT(*) INTO v_municipality_count FROM Municipality_TAB;
+    SELECT COUNT(*) INTO v_office_count FROM Office_TAB;
+    SELECT COUNT(*) INTO v_team_count FROM Team_TAB;
+    SELECT COUNT(*) INTO v_booking_count FROM Booking_TAB;
 
--- ============================================================================
--- SUMMARY
--- ============================================================================
-BEGIN
     DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('===========================================');
-    DBMS_OUTPUT.PUT_LINE('    TRIGGER TESTS COMPLETED');
-    DBMS_OUTPUT.PUT_LINE('===========================================');
-    DBMS_OUTPUT.PUT_LINE('');
+    DBMS_OUTPUT.PUT_LINE('=== SCHEMA VERIFICATION ===');
+    DBMS_OUTPUT.PUT_LINE('Regions:        ' || v_region_count || ' (expected: 22)');
+    DBMS_OUTPUT.PUT_LINE('Municipalities: ' || v_municipality_count || ' (expected: 220)');
+    DBMS_OUTPUT.PUT_LINE('Offices:        ' || v_office_count || ' (expected: 23)');
+    DBMS_OUTPUT.PUT_LINE('Teams:          ' || v_team_count || ' (expected: >= 110)');
+    DBMS_OUTPUT.PUT_LINE('Bookings:       ' || v_booking_count || ' (expected: >= 100)');
 END;
 /

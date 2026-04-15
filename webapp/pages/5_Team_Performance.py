@@ -2,10 +2,11 @@ import streamlit as st
 import oracledb
 import db_utils
 
+db_utils.ensure_session_state()
 
 st.title("📈 Team Performance Overview")
 
-if not st.session_state.db_connected or not st.session_state.logged_in_user:
+if not st.session_state.get("db_connected") or not st.session_state.get("logged_in_user"):
     st.warning("You must be logged in to view this report. Please go to **Login**.")
 else:
     try:
@@ -14,7 +15,7 @@ else:
                 cursor.execute(
                     """
                     SELECT TeamCode, TeamName, NoInstallations,
-                           CARDINALITY(Members) AS TeamSize
+                           (SELECT COUNT(*) FROM TABLE(CAST(Members AS Member_VA))) AS TeamSize
                     FROM Team_TAB
                     ORDER BY NoInstallations DESC, TeamCode
                     """
@@ -35,7 +36,7 @@ else:
                         }
                         for row in team_rows
                     ],
-                    use_container_width=True,
+                    width="stretch",
                 )
 
             with connection.cursor() as cursor:
@@ -63,7 +64,7 @@ else:
                         }
                         for row in type_rows
                     ],
-                    use_container_width=True,
+                    width="stretch",
                 )
     except oracledb.Error as e:
         error_obj, = e.args

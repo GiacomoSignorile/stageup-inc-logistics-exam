@@ -1,12 +1,14 @@
 -- DROP SECTION (safe cleanup before creation)
 BEGIN
     FOR obj IN (
-        SELECT 'TABLE' AS object_type, 'OFFICE_TAB' AS object_name FROM dual UNION ALL
+        SELECT 'TABLE' AS object_type, 'BOOKING_TAB' AS object_name FROM dual UNION ALL
+        SELECT 'TABLE', 'LOCATION_TAB' FROM dual UNION ALL
         SELECT 'TABLE', 'CUSTOMER_TAB' FROM dual UNION ALL
         SELECT 'TABLE', 'TEAM_TAB' FROM dual UNION ALL
-        SELECT 'TABLE', 'LOCATION_TAB' FROM dual UNION ALL
-        SELECT 'TABLE', 'EQUIPMENT_TAB' FROM dual UNION ALL
-        SELECT 'TABLE', 'BOOKING_TAB' FROM dual
+        SELECT 'TABLE', 'MUNICIPALITY_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'REGION_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'OFFICE_TAB' FROM dual UNION ALL
+        SELECT 'TABLE', 'EQUIPMENT_TAB' FROM dual
     ) LOOP
         BEGIN
             EXECUTE IMMEDIATE 'DROP TABLE ' || obj.object_name || ' CASCADE CONSTRAINTS';
@@ -18,6 +20,19 @@ BEGIN
         END;
     END LOOP;
 END;
+/
+
+-- 0. REGION AND MUNICIPALITY TABLES (Foundation)
+CREATE TABLE Region_TAB OF Region_t (
+    RegionCode PRIMARY KEY
+);
+/
+
+CREATE TABLE Municipality_TAB OF Municipality_t (
+    MunicipalityCode PRIMARY KEY,
+    RegionRef NOT NULL,
+    SCOPE FOR (RegionRef) IS Region_TAB
+);
 /
 
 -- 1. OFFICE TABLE (Central Office and Depots)
@@ -41,7 +56,11 @@ CREATE TABLE Customer_TAB OF Customer_t (
 CREATE TABLE Team_TAB OF Team_t (
     TeamCode PRIMARY KEY,
     TeamName NOT NULL,
-    NoInstallations DEFAULT 0 NOT NULL -- Redundant attribute for Performance Analysis
+    NoInstallations DEFAULT 0 NOT NULL,
+    RegionRef NOT NULL,
+    OfficeRef NOT NULL,
+    SCOPE FOR (RegionRef) IS Region_TAB,
+    SCOPE FOR (OfficeRef) IS Office_TAB
 );
 /
 
@@ -51,7 +70,7 @@ CREATE TABLE Location_TAB OF Location_t (
     OwnerRef NOT NULL,
     SetupTimeEstimate NOT NULL,
     EquipmentCapacity NOT NULL,
-    SCOPE FOR (OwnerRef) IS (SELECT REF(c) FROM Customer_TAB c)
+    SCOPE FOR (OwnerRef) IS Customer_TAB
 );
 /
 
@@ -64,7 +83,7 @@ CREATE TABLE Equipment_TAB (
 );
 /
 
--- 6. BOOKING TABLE (Renamed from BatchOrder)
+-- 6. BOOKING TABLE
 CREATE TABLE Booking_TAB OF Booking_t (
     BookingID PRIMARY KEY,
     BookingType NOT NULL,
@@ -72,8 +91,10 @@ CREATE TABLE Booking_TAB OF Booking_t (
     Duration NOT NULL,
     TotalCost NOT NULL,
     PlacementMode NOT NULL,
-    AtLocation NOT NULL SCOPE IS Location_TAB,
-    HandledBy NOT NULL SCOPE IS Team_TAB,
+    AtLocation NOT NULL,
+    HandledBy NOT NULL,
+    SCOPE FOR (AtLocation) IS Location_TAB,
+    SCOPE FOR (HandledBy) IS Office_TAB,
     CHECK (BookingType IN ('One-time', 'Recurring', 'Seasonal', 'Promotional')),
     CHECK (PlacementMode IN ('Phone', 'Mail', 'Email', 'Website')),
     CHECK (TotalCost > 0)

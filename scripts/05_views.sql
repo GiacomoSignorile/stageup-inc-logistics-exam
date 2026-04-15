@@ -1,4 +1,18 @@
--- 1. VIEW: Setup Team Members
+-- 1. VIEW: Geographic Structure - Regions with Municipalities
+CREATE OR REPLACE VIEW ViewRegionMunicipalities AS
+SELECT
+    r.RegionCode,
+    r.RegionName,
+    m.MunicipalityCode,
+    m.MunicipalityName
+FROM
+    Region_TAB r
+    LEFT JOIN Municipality_TAB m ON DEREF(m.RegionRef).RegionCode = r.RegionCode
+ORDER BY
+    r.RegionCode, m.MunicipalityCode;
+/
+
+-- 2. VIEW: Setup Team Members
 -- This view unpacks (unnests) the VARRAY of members inside the Team_TAB.
 -- This shows the Professor you know how to query collections.
 CREATE OR REPLACE VIEW ViewTeamMembers AS
@@ -6,15 +20,17 @@ SELECT
     t.TeamCode,
     t.TeamName,
     t.NoInstallations,
+    DEREF(t.RegionRef).RegionName AS AssignedRegion,
+    DEREF(t.OfficeRef).Name AS AssignedOffice,
     m.TaxCode AS MemberTaxCode,
     m.FirstName AS MemberFirstName,
     m.LastName AS MemberLastName
 FROM
     Team_TAB t,
-    TABLE(t.Members) m;
+    TABLE(CAST(t.Members AS Member_VA)) m;
 /
 
--- 2. VIEW: Customer Locations
+-- 3. VIEW: Customer Locations
 -- This view navigates the REF from Location_TAB back to Customer_TAB.
 -- It also unpacks the Address_t object into flat columns.
 CREATE OR REPLACE VIEW ViewCustomerLocations AS
@@ -31,18 +47,19 @@ FROM
     Location_TAB l;
 /
 
--- 3. VIEW: Full Booking Details
+-- 4. VIEW: Full Booking Details
 -- This view navigates MULTIPLE REFs (Booking -> Location -> Customer)
--- and (Booking -> Team) to create a complete report of an operation.
+-- and (Booking -> Office) to create a complete report of an operation.
 CREATE OR REPLACE VIEW ViewBookingDetails AS
 SELECT
     b.BookingID,
     b.BookingType,
     b.BookingDate,
+    b.Duration,
     b.TotalCost,
     b.PlacementMode,
-    DEREF(b.HandledBy).TeamCode AS AssignedTeamCode,
-    DEREF(b.HandledBy).TeamName AS AssignedTeamName,
+    DEREF(b.HandledBy).Name AS HandlingOffice,
+    DEREF(b.HandledBy).OfficeType AS OfficeType,
     DEREF(b.AtLocation).LocationCode AS DestinationLocation,
     DEREF(b.AtLocation).Address.City AS DestinationCity,
     -- Chaining DEREFs to get the Customer Code from the Location
@@ -51,7 +68,7 @@ FROM
     Booking_TAB b;
 /
 
--- 4. VIEW: Regional Office Overview
+-- 5. VIEW: Regional Office Overview
 -- Unpacks the Address_t object for the company's own offices and depots.
 CREATE OR REPLACE VIEW ViewCompanyOffices AS
 SELECT
@@ -65,7 +82,47 @@ FROM
     Office_TAB o;
 /
 
--- 5. VIEW: Customer Activity Report
+-- 6. VIEW: Central Office Booking Overview
+-- Shows all bookings handled by the Central Office
+CREATE OR REPLACE VIEW ViewCentralOfficeBookings AS
+SELECT
+    bd.BookingID,
+    bd.BookingType,
+    bd.BookingDate,
+    bd.Duration,
+    bd.TotalCost,
+    bd.PlacementMode,
+    bd.DestinationLocation,
+    bd.DestinationCity,
+    bd.OrderedByCustomer
+FROM
+    ViewBookingDetails bd
+WHERE
+    bd.OfficeType = 'Central';
+/
+
+-- 7. VIEW: Depot Operational Reports
+-- Shows teams by depot/region for operational planning
+CREATE OR REPLACE VIEW ViewDepotTeamAssignments AS
+SELECT
+    DEREF(t.OfficeRef).Name AS Depot,
+    DEREF(t.RegionRef).RegionName AS Region,
+    t.TeamCode,
+    t.TeamName,
+    t.NoInstallations,
+    (
+        SELECT COUNT(*)
+        FROM TABLE(CAST(t.Members AS Member_VA)) m
+    ) AS TeamSize
+FROM
+    Team_TAB t
+WHERE
+    DEREF(t.OfficeRef).OfficeType = 'Depot'
+ORDER BY
+    Depot, TeamCode;
+/
+
+-- 8. VIEW: Customer Activity Report
 -- Aggregates data to show how much money each customer has spent
 -- (Useful for the Data Warehouse / Business Intelligence part of the exam)
 CREATE OR REPLACE VIEW ViewCustomerActivity AS
