@@ -9,7 +9,7 @@
 -- - 110 Teams
 -- - 25 Equipment rows
 -- - 80 Customers
--- - 50 Locations
+-- - 80 Locations
 -- - 100 Bookings
 -- ============================================================================
 
@@ -496,7 +496,7 @@ END;
 /
 
 -- ---------------------------------------------------------------------------
--- PHASE 7: LOCATIONS (78)
+-- PHASE 7: LOCATIONS (80)
 -- ---------------------------------------------------------------------------
 DECLARE
     v_location_code VARCHAR2(10);
@@ -552,13 +552,11 @@ BEGIN
     v_provinces(9) := 'VE';
     v_provinces(10) := 'VR';
 
-    -- Assign one location to almost all customers (78 out of 80) to keep
-    -- customers without locations bounded to 2 in a deterministic way.
+    -- Assign one location to each customer to guarantee full coverage.
     FOR cust IN (
         SELECT REF(c) AS customer_ref
         FROM Customer_TAB c
         ORDER BY c.CustomerCode
-        FETCH FIRST 78 ROWS ONLY
     ) LOOP
         v_idx := v_idx + 1;
         v_location_code := 'LOC' || LPAD(location_code_seq.NEXTVAL, 7, '0');
@@ -582,7 +580,7 @@ BEGIN
     END LOOP;
 
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Successfully populated 78 locations into Location_TAB.');
+    DBMS_OUTPUT.PUT_LINE('Successfully populated 80 locations into Location_TAB.');
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         ROLLBACK;
@@ -598,6 +596,7 @@ END;
 -- ---------------------------------------------------------------------------
 DECLARE
     v_location_ref REF Location_t;
+    v_location_capacity NUMBER;
     v_handling_office_ref REF Office_t;
     v_booking_date DATE;
     v_booking_type VARCHAR2(20);
@@ -620,8 +619,8 @@ BEGIN
     v_placement_modes(4) := 'Website';
 
     FOR i IN 1..100 LOOP
-        SELECT REF(l)
-        INTO v_location_ref
+        SELECT REF(l), l.EquipmentCapacity
+        INTO v_location_ref, v_location_capacity
         FROM Location_TAB l
         ORDER BY DBMS_RANDOM.VALUE
         FETCH FIRST 1 ROW ONLY;
@@ -644,6 +643,11 @@ BEGIN
         v_total_cost := ROUND(DBMS_RANDOM.VALUE(100, 10000), 2);
         v_booking_type := v_booking_types(TRUNC(DBMS_RANDOM.VALUE(1, 5)));
         v_placement_mode := v_placement_modes(TRUNC(DBMS_RANDOM.VALUE(1, 5)));
+
+        -- Keep population trigger-safe: Promotional bookings require capacity >= 100.
+        IF v_booking_type = 'Promotional' AND v_location_capacity < 100 THEN
+            v_booking_type := 'One-time';
+        END IF;
 
         INSERT INTO Booking_TAB (
             BookingID,
