@@ -26,14 +26,12 @@ END;
 CREATE TABLE Region_TAB OF Region_t (
     RegionCode PRIMARY KEY
 );
-/
 
 CREATE TABLE Municipality_TAB OF Municipality_t (
     MunicipalityCode PRIMARY KEY,
     RegionRef NOT NULL,
     SCOPE FOR (RegionRef) IS Region_TAB
 );
-/
 
 -- 1. OFFICE TABLE (Central Office and Depots)
 CREATE TABLE Office_TAB OF Office_t (
@@ -41,28 +39,27 @@ CREATE TABLE Office_TAB OF Office_t (
     OfficeType NOT NULL,
     CHECK (OfficeType IN ('Central', 'Depot'))
 );
-/
 
 -- 2. CUSTOMER TABLE (Using inheritance)
 CREATE TABLE Customer_TAB OF Customer_t (
     CustomerCode PRIMARY KEY,
+    Email NOT NULL,
     CustomerType NOT NULL,
+    CHECK (REGEXP_LIKE(Email, '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')),
     CHECK (CustomerType IN ('Individual', 'Company'))
 );
-/
 
 -- 3. SETUP TEAM TABLE 
 -- Note: No NESTED TABLE clause needed because 'Members' is a VARRAY
 CREATE TABLE Team_TAB OF Team_t (
     TeamCode PRIMARY KEY,
     TeamName NOT NULL,
-    NoInstallations DEFAULT 0 NOT NULL,
+    N_Total_Installations DEFAULT 0 NOT NULL,
     RegionRef NOT NULL,
     OfficeRef NOT NULL,
     SCOPE FOR (RegionRef) IS Region_TAB,
     SCOPE FOR (OfficeRef) IS Office_TAB
 );
-/
 
 -- 4. EVENT LOCATION TABLE
 CREATE TABLE Location_TAB OF Location_t (
@@ -70,9 +67,10 @@ CREATE TABLE Location_TAB OF Location_t (
     OwnerRef NOT NULL,
     SetupTimeEstimate NOT NULL,
     EquipmentCapacity NOT NULL,
+    CHECK (SetupTimeEstimate > 0),
+    CHECK (EquipmentCapacity > 0),
     SCOPE FOR (OwnerRef) IS Customer_TAB
 );
-/
 
 -- 5. EQUIPMENT TABLE (Required for Exercise 6 Triggers)
 CREATE TABLE Equipment_TAB (
@@ -81,7 +79,6 @@ CREATE TABLE Equipment_TAB (
     UnitsAvailable NUMBER NOT NULL,
     CHECK (UnitsAvailable >= 0)
 );
-/
 
 -- 6. BOOKING TABLE
 CREATE TABLE Booking_TAB OF Booking_t (
@@ -93,8 +90,10 @@ CREATE TABLE Booking_TAB OF Booking_t (
     PlacementMode NOT NULL,
     AtLocation NOT NULL,
     HandledBy NOT NULL,
+    AssignedTeam NOT NULL,
     SCOPE FOR (AtLocation) IS Location_TAB,
     SCOPE FOR (HandledBy) IS Office_TAB,
+    SCOPE FOR (AssignedTeam) IS Team_TAB,
     CHECK (BookingType IN ('One-time', 'Recurring', 'Seasonal', 'Promotional')),
     CHECK (PlacementMode IN ('Phone', 'Mail', 'Email', 'Website')),
     CHECK (TotalCost > 0)

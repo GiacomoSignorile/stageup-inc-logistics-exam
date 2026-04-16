@@ -7,8 +7,15 @@ st.title("🔐 Login to StageUp Event Setup Database")
 st.markdown("Select your username and enter your password to connect to the database.")
 
 # Fetch user list only once or when needed
-if 'db_users_list' not in st.session_state:
+if not st.session_state.get("db_users_list"):
     st.session_state.db_users_list = db_utils.get_all_db_users()
+
+if not st.session_state.db_users_list:
+    st.warning("No database users available. Make sure Oracle is running and credentials are correct.")
+    if st.button("Reload users"):
+        st.session_state.db_users_list = db_utils.get_all_db_users()
+        st.rerun()
+    st.stop()
 
 # --- Login Form ---
 with st.form("login_form"):

@@ -106,10 +106,19 @@ Indexes are defined in scripts/03_indexes.sql for:
 
 ## Implemented Triggers
 
-Triggers are defined in scripts/04_triggers.sql and include:
+Triggers are defined in [scripts/04_triggers.sql](scripts/04_triggers.sql) and include:
 
-- Synchronization of Team_TAB.NoInstallations when Booking_TAB rows are inserted, deleted, or reassigned
-- Team insertion/update constraints on NoInstallations changes
+- `TrgSyncTeamOps`: synchronizes team installation counters when a booking is inserted, deleted, or reassigned
+- `CHECK_TEAM_CONSTRAINTS`: enforces zero initial operations and incremental updates on `N_Total_Installations`
+- `TrgTeamMemberDates`: rejects future or missing birth dates for team members
+- `TrgBookingDates`: rejects bookings dated in the past
+- `TrgTeamMustHaveMembers`: prevents empty team member collections
+
+The following constraints are enforced at table level in [scripts/02_tables.sql](scripts/02_tables.sql):
+
+- booking type domain and positive booking cost
+- customer email format
+- positive location setup time and equipment capacity
 
 See scripts/01_types.sql through scripts/07_triggertests.sql for full DDL, data population, and validation tests.
 
@@ -144,12 +153,12 @@ The application exposes the following pages in webapp/pages:
 
 - 1_Login.py: user login and connection test
 - 2_Tables.py: raw tables and view previews
-- 3_Register_New_Product_Batch.py: create new booking
-- 4_Place_New_Order.py: edit booking details
-- 5_Team_Performance.py: team and booking analytics
-- 6_Assign_Delivery_To_Team.py: reassign booking team
-- 7_View_Team_Deliveries.py: team booking report
-- 8_List_Expired_Batches.py: upcoming bookings report
+- Op1_Register_New_Customer.py: operation 1 customer onboarding workflow
+- Op2_Record_New_Booking.py: operation 2 booking creation workflow
+- Op3_Register_Event_Location.py: operation 3 location registration workflow
+- Op4_View_Team_at_Location.py: operation 4 team-by-location analysis
+- Op5_Location_Activity_Report.py: operation 5 location activity analytics
+- Op6_Manager_Dashboard.py: manager dashboard with KPIs, trends, and scoreboards
 
 ## Notes
 

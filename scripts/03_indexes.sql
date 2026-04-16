@@ -2,6 +2,7 @@
 -- These allow fast navigation from a Booking to its Location/Team
 CREATE INDEX IdxBookingAtLocation ON Booking_TAB(AtLocation);
 CREATE INDEX IdxBookingHandledBy ON Booking_TAB(HandledBy);
+CREATE INDEX IdxBookingAssignedTeam ON Booking_TAB(AssignedTeam);
 
 -- Links the Location back to the Customer
 CREATE INDEX IdxLocationOwner ON Location_TAB(OwnerRef);
@@ -17,7 +18,7 @@ CREATE INDEX IdxLocationOwner ON Location_TAB(OwnerRef);
 
 -- Optimization for Team Performance Sorting
 -- A B+Tree is best for sorting operations (ORDER BY)
-CREATE INDEX IdxTeamNoInstallations ON Team_TAB(NoInstallations);
+CREATE INDEX IdxTeamNTotalInstallations ON Team_TAB(N_Total_Installations);
 
 -- 3. CATEGORICAL INDEXES (For Frequently Filtered Columns)
 -- Index on Booking Type (Recurring, One-time, etc.)

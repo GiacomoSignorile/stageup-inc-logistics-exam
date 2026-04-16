@@ -19,7 +19,7 @@ CREATE OR REPLACE VIEW ViewTeamMembers AS
 SELECT
     t.TeamCode,
     t.TeamName,
-    t.NoInstallations,
+    t.N_Total_Installations,
     DEREF(t.RegionRef).RegionName AS AssignedRegion,
     DEREF(t.OfficeRef).Name AS AssignedOffice,
     m.TaxCode AS MemberTaxCode,
@@ -60,6 +60,8 @@ SELECT
     b.PlacementMode,
     DEREF(b.HandledBy).Name AS HandlingOffice,
     DEREF(b.HandledBy).OfficeType AS OfficeType,
+    DEREF(b.AssignedTeam).TeamCode AS HandlingTeamCode,
+    DEREF(b.AssignedTeam).TeamName AS HandlingTeam,
     DEREF(b.AtLocation).LocationCode AS DestinationLocation,
     DEREF(b.AtLocation).Address.City AS DestinationCity,
     -- Chaining DEREFs to get the Customer Code from the Location
@@ -109,7 +111,7 @@ SELECT
     DEREF(t.RegionRef).RegionName AS Region,
     t.TeamCode,
     t.TeamName,
-    t.NoInstallations,
+    t.N_Total_Installations,
     (
         SELECT COUNT(*)
         FROM TABLE(CAST(t.Members AS Member_VA)) m

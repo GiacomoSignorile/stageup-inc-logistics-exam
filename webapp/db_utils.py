@@ -10,12 +10,20 @@ DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "1521")
 DB_SERVICE_NAME = os.getenv("DB_SERVICE_NAME", "XE")
 
-if "db_pool" not in st.session_state:
-    st.session_state.db_pool = None
-if "db_connected" not in st.session_state:
-    st.session_state.db_connected = False
-if "logged_in_user" not in st.session_state:
-    st.session_state.logged_in_user = None
+
+def ensure_session_state():
+    """Ensure all session state keys used across pages are initialized."""
+    if "db_pool" not in st.session_state:
+        st.session_state.db_pool = None
+    if "db_connected" not in st.session_state:
+        st.session_state.db_connected = False
+    if "logged_in_user" not in st.session_state:
+        st.session_state.logged_in_user = None
+    if "db_users_list" not in st.session_state:
+        st.session_state.db_users_list = []
+
+
+ensure_session_state()
 
 
 def get_all_db_users():
