@@ -8,6 +8,7 @@
 \usepackage[table]{xcolor}
 \usepackage{longtable}
 \usepackage{tikz}
+\usepackage{float}
 
 \newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
@@ -297,24 +298,24 @@ The following table reports the design intent and how each constraint has been t
 \begin{center}
 \renewcommand{\arraystretch}{1.5}
 \small
-\begin{tabular}{|p{0.08\textwidth}|p{0.55\textwidth}|p{0.27\textwidth}|}
+\begin{tabular}{|p{0.10\textwidth}|p{0.80\textwidth}|}
 \hline
 \rowcolor[rgb]{0.1, 0.3, 0.5} 
-\textcolor{white}{\textbf{ID}} & \textcolor{white}{\textbf{Constraint Description}} & \textcolor{white}{\textbf{Status / Implementation}} \\ \hline
+\textcolor{white}{\textbf{ID}} & \textcolor{white}{\textbf{Constraint Description}} \\ \hline
 
-\textbf{BR1} & A Team can contain at most 10 Members. & \textbf{Implemented} \newline via \texttt{VARRAY(10)} in \texttt{Member\_VA}. \\ \hline
+\textbf{BR1} & A Team can contain at most 10 Members; this rule is enforced through \texttt{VARRAY(10)} in \texttt{Member\_VA}. \\ \hline
 
-\textbf{BR2} & Team territorial assignment is constrained by a single Region reference. & \textbf{Implemented} \newline via \texttt{RegionRef} in the \texttt{Team\_t} object and \texttt{SCOPE FOR (RegionRef)}. \\ \hline
+\textbf{BR2} & Team territorial assignment is constrained by a single Region reference, enforced through \texttt{RegionRef} in \texttt{Team\_t} and \texttt{SCOPE FOR (RegionRef)}. \\ \hline
 
-\textbf{BR3} & Booking total cost must be a strictly positive value. & \textbf{Implemented} \newline via \texttt{CHECK (TotalCost > 0)} on \texttt{Booking\_TAB}. \\ \hline
+\textbf{BR3} & Booking total cost must be a strictly positive value, enforced through \texttt{CHECK (TotalCost > 0)} on \texttt{Booking\_TAB}. \\ \hline
 
-\textbf{BR4} & Team operational count must be synchronized when bookings are inserted, deleted, or reassigned. & \textbf{Implemented} \newline via \texttt{TrgSyncTeamOps}, \texttt{ASSIGN\_TEAM\_TO\_BOOKING}, and helper procedures \texttt{IncrementOperationsCount}/\texttt{DecrementOperationsCount}. \\ \hline
+\textbf{BR4} & Team operational count must be synchronized when bookings are inserted, deleted, or reassigned; this behavior is enforced through \texttt{TrgSyncTeamOps}, \texttt{ASSIGN\_TEAM\_TO\_BOOKING}, and the helper procedures \texttt{IncrementOperationsCount}/\texttt{DecrementOperationsCount}. \\ \hline
 
-\textbf{BR5} & Customer and booking data must remain valid for email, dates, and booking-domain values. & \textbf{Implemented} \newline via table-level \texttt{CHECK} constraints (email format, positive values, booking domains) and \texttt{TrgBookingDates}. \\ \hline
+\textbf{BR5} & Customer and booking data must remain valid with respect to email format, dates, and booking-domain values; this is enforced through table-level \texttt{CHECK} constraints and \texttt{TrgBookingDates}. \\ \hline
 
-\textbf{BR6} & Team members and event locations must remain consistent with the domain rules. & \textbf{Implemented} \newline via \texttt{TrgTeamMemberDates}, \texttt{TrgTeamMustHaveMembers}, and table-level checks on \texttt{Location\_TAB}. \\ \hline
+\textbf{BR6} & Team members and event locations must remain consistent with the domain rules; this is enforced through \texttt{TrgTeamMemberDates}, \texttt{TrgTeamMustHaveMembers}, and table-level checks on \texttt{Location\_TAB}. \\ \hline
 
-\textbf{BR7} & Promotional bookings are allowed only on locations with sufficient equipment capacity. & \textbf{Implemented} \newline via \texttt{TrgCheckLocationCapacity} (rejects \texttt{BookingType = 'Promotional'} when \texttt{EquipmentCapacity < 100}). \\ \hline
+\textbf{BR7} & Promotional bookings are allowed only on locations with sufficient equipment capacity; this is enforced through \texttt{TrgCheckLocationCapacity}, which rejects \texttt{BookingType = 'Promotional'} when \texttt{EquipmentCapacity < 100}. \\ \hline
 
 \end{tabular}
 \end{center}
@@ -497,7 +498,6 @@ In this section, we focus on the physical design of the system, showing how the 
 \texttt{Booking\_t} & Represents a booking with date, type, duration, total cost, placement mode, and \texttt{REF}s to location, office, and assigned team. \\ \hline
 \texttt{Team\_t} & Represents an operational team with code, name, operation count, member varray, and references to its region and office. \\ \hline
 \texttt{Member\_t} & Represents a team member with tax code, first name, last name, and birth date. \\ \hline
-\texttt{Member\_VA} & Bounded varray (max 10) storing members directly inside \texttt{Team\_t}. \\ \hline
 \end{tabularx}
 \end{center}
 
@@ -726,9 +726,9 @@ This group of tables materializes the most relevant UML associations. In particu
 
 \subsection{Trigger Implementation and Validation Tests}
 To fully enforce the business rules at database level, the project includes a dedicated trigger module (\texttt{scripts/04\_triggers.sql}) and a companion test campaign (\texttt{scripts/07\_triggertests.sql}).
-In this report section, we list only the real \texttt{Trg*} triggers used for synchronization and domain validation.
+In this report section, we list only the triggers used for synchronization and domain validation.
 
-\subsubsection*{Trigger Catalog (Real \texttt{Trg*} Objects)}
+\subsubsection*{Trigger Catalog}
 The following triggers are implemented and actively used by the application:
 \begin{itemize}
     \item \texttt{TrgSyncTeamOps} (AFTER INSERT/DELETE/UPDATE OF \texttt{HandledBy} on \texttt{Booking\_TAB}): keeps team installation counters synchronized when bookings are inserted, reassigned, or deleted.
@@ -740,7 +740,7 @@ The following triggers are implemented and actively used by the application:
 
 This implementation directly supports BR1, BR4, BR5, BR6, and BR7 from the business-rule table and complements table-level \texttt{CHECK} constraints.
 
-\subsubsection*{SQL Code Extracts (Real \texttt{Trg*} Triggers)}
+\subsubsection*{SQL Code Triggers)}
 For completeness, we report the core SQL definitions of the real \texttt{Trg*} triggers used in the project.
 
 \begin{verbatim}
@@ -850,7 +850,7 @@ END;
 \end{verbatim}
 
 \subsubsection*{Trigger Test Campaign (A--K)}
-The validation suite in \texttt{scripts/07\_triggertests.sql} executes positive and negative checks with automatic identifiers and transactional cleanup. Focusing only on real \texttt{Trg*} triggers, the relevant outcomes are:
+The validation suite in \texttt{scripts/07\_triggertests.sql} executes positive and negative checks with automatic identifiers and transactional cleanup. Focusing only on triggers, the relevant outcomes are:
 \begin{itemize}
     \item \textbf{Tests B/C/D}: verify \texttt{TrgSyncTeamOps} synchronization semantics on booking \texttt{INSERT}, \texttt{UPDATE HandledBy}, and \texttt{DELETE}.
     \item \textbf{Test F}: verifies \texttt{TrgTeamMemberDates} rejects future birth dates.
@@ -1042,7 +1042,7 @@ The application architecture consists of three primary components:
 \subsection{Deployment Diagram}
 The deployment of the StageUp Inc. system is managed through \textbf{Docker} container technology. This ensures that the application and database environments remain isolated and reproducible.
 
-\begin{figure}[h!]
+\begin{figure}[H]
     \centering
     \IfFileExists{prism-uploads/architecture.drawio.png}{%
         \includegraphics[width=0.9\textwidth,height=0.72\textheight,keepaspectratio]{prism-uploads/architecture.drawio.png}
@@ -1054,181 +1054,130 @@ The deployment of the StageUp Inc. system is managed through \textbf{Docker} con
 
 The diagram illustrates the network communication between the two main Docker nodes. The Application Server sends SQL requests over \textbf{TCP/IP} using a \textbf{JDBC/Oracle-Net} connection to the Database Server. Persistent storage is managed via a Docker Volume to ensure data is not lost when the container is restarted.
 
-\section{Implementation: Streamlit Application}
-\subsection{Reference Alignment with \texttt{Project Work.pdf}}
-The Streamlit implementation follows the same functional perspective described in the reference report section \textit{GUI Screens}, which is structured around three viewpoints: \textbf{Customer}, \textbf{Team}, and \textbf{Manager}. In this project, the same viewpoints are preserved, but mapped to a multi-page Streamlit architecture instead of a single low-code interface.
+\section{GUI Screens}
 
-\subsection{Technical Architecture}
-The web application is implemented as a multi-page Streamlit front-end over Oracle 21c XE.
-The architecture is composed of the following software layers:
-\begin{itemize}
-    \item \textbf{UI layer}: Streamlit pages in \texttt{webapp/Home.py} and \texttt{webapp/pages/*.py}.
-    \item \textbf{Session and authentication layer}: shared state managed through \texttt{st.session\_state} and login/logout helpers.
-    \item \textbf{Data access layer}: Oracle connection pooling and SQL execution through \texttt{db\_utils.py}.
-    \item \textbf{Presentation layer}: centralized labels in \texttt{app\_config.py} and custom visual theme in \texttt{ui\_theme.py}.
-\end{itemize}
+The following interfaces encapsulate the main concepts of the StageUp system. The Streamlit platform provides a practical front-end through which different stakeholders can interact with the Oracle object-relational database without requiring direct SQL knowledge. The application is organized into three main functional viewpoints, aligned with the operational requirements discussed throughout the project.
 
-Compared with the deployment logic described in the reference PDF (separated data and application services), this implementation keeps the same conceptual split between data management and user interaction, while focusing on an exam-friendly local setup.
+\subsection{Customer View}
+The customer-oriented interfaces group the workflows used by office personnel to manage the lifecycle of a client. The platform supports the registration of new customer profiles, whether \textbf{Individual} or \textbf{Company}, together with the generation of the corresponding unique customer code.
 
-\subsection{Shared Webapp Modules}
-The following modules are shared by all pages and provide consistent behavior:
-\begin{itemize}
-    \item \texttt{app\_config.py}: central titles/subtitles used across the interface.
-    \item \texttt{db\_utils.py}: connection parameters from environment variables, user discovery query, connection-pool initialization, logout flow, and session-state bootstrap.
-    \item \texttt{ui\_theme.py}: global CSS theme, section headers, and reusable KPI cards.
-    \item \texttt{Home.py}: main landing page with project overview, operation frequencies, trigger summary, and navigation guidance.
-\end{itemize}
+Once a customer has been selected, the operator can manage the related \textbf{Event Locations}. The interface supports the insertion of new physical sites while ensuring that address data and technical attributes, such as setup time and equipment capacity, are properly defined. In the same area of the application, the operator can also record \textbf{New Bookings}: the system generates a unique booking identifier and links the booking metadata to the selected customer, the chosen location, and the operational history already stored in the database.
 
-\subsection{Complete Page-by-Page Functional Description}
-\subsubsection*{1) Authentication and Access}
-\texttt{1\_Login.py} provides:
-\begin{itemize}
-    \item automatic loading of candidate Oracle users (\texttt{SYSTEM} and \texttt{C\#\#*});
-    \item credential-based login with pooled connection activation;
-    \item quick health check query (\texttt{SELECT SYSDATE FROM DUAL});
-    \item explicit logout with pool shutdown and session cleanup.
-\end{itemize}
-
-\subsubsection*{2) Data Exploration}
-\texttt{2\_Tables.py} acts as a schema browser for operational and reporting data. It exposes, through expandable panels, both base object tables and derived views:
-\begin{itemize}
-    \item \textbf{Core tables}: \texttt{Region\_TAB}, \texttt{Office\_TAB}, \texttt{Team\_TAB}, \texttt{Equipment\_TAB}, \texttt{Customer\_TAB}, \texttt{Municipality\_TAB}, \texttt{Location\_TAB}, \texttt{Booking\_TAB}.
-    \item \textbf{Reporting views}: \texttt{ViewTeamMembers}, \texttt{ViewCustomerLocations}, \texttt{ViewCompanyOffices}, \texttt{ViewBookingDetails}, \texttt{ViewCustomerActivity}.
-\end{itemize}
-This page is used for transparency and verification of database state before and after each operation.
-
-\subsubsection*{3) Operation Pages (OP1--OP5)}
-\texttt{Op1\_Register\_New\_Customer.py} (Operation 1, 10/day):
-\begin{itemize}
-    \item generates the next customer code;
-    \item captures customer identity and primary address;
-    \item optionally creates one or more event locations in the same transaction;
-    \item returns a registration summary and an updated customer list.
-\end{itemize}
-
-\texttt{Op2\_Record\_New\_Booking.py} (Operation 2, 300/day):
-\begin{itemize}
-    \item loads available customers, their locations, and active teams;
-    \item generates the next booking identifier;
-    \item inserts booking metadata (type, date, duration, placement mode, cost);
-    \item binds booking to a location reference and handling office reference;
-    \item outputs a booking confirmation and recent-bookings table.
-\end{itemize}
-
-\texttt{Op3\_Register\_Event\_Location.py} (Operation 3, 50/day):
-\begin{itemize}
-    \item selects an existing customer;
-    \item generates a new location code;
-    \item stores full address plus setup/capacity attributes;
-    \item shows aggregated counts by customer and a global location list.
-\end{itemize}
-
-\texttt{Op4\_View\_Team\_at\_Location.py} (Operation 4, 20/day):
-\begin{itemize}
-    \item selects an event location and retrieves its bookings;
-    \item shows handling office data for each booking;
-    \item expands team details and member lists associated with the operational context;
-    \item computes local metrics (bookings, total hours, total revenue) for the selected location.
-\end{itemize}
-
-\texttt{Op5\_Location\_Activity\_Report.py} (Operation 5, 5/day):
-\begin{itemize}
-    \item ranks locations by number of bookings (descending);
-    \item provides summary statistics and top-performing locations;
-    \item supports detail drill-down per location with booking list;
-    \item includes CSV export and city-level activity charting.
-\end{itemize}
-
-\subsubsection*{4) Manager Analytics Page (OP6)}
-\texttt{Op6\_Manager\_Dashboard.py} provides a managerial analytics cockpit with:
-\begin{itemize}
-    \item global filters (year, office, top-N teams);
-    \item KPI cards (total orders, total revenue, average duration, active offices);
-    \item team score panel based on \texttt{N\_Total\_Installations};
-    \item historical order trend (monthly and yearly views);
-    \item distribution widgets by province and placement mode;
-    \item office score table with order volume and average cost.
-\end{itemize}
-
-\subsection{Functional Mapping to the Reference GUI Views}
-The correspondence with the \texttt{Project Work.pdf} GUI viewpoints is the following:
-\begin{itemize}
-    \item \textbf{Customer view} (reference PDF): implemented through \texttt{1\_Login.py}, \texttt{Op1\_Register\_New\_Customer.py}, \texttt{Op2\_Record\_New\_Booking.py}, and \texttt{Op3\_Register\_Event\_Location.py}.
-    \item \textbf{Team view} (reference PDF): implemented through \texttt{Op4\_View\_Team\_at\_Location.py} and \texttt{Op5\_Location\_Activity\_Report.py}, including team/member and location activity analysis.
-    \item \textbf{Manager view} (reference PDF): implemented through \texttt{Op6\_Manager\_Dashboard.py} with KPI-driven operational analytics.
-\end{itemize}
-
-\subsection{Screenshot Placeholders (Ready for Final Insert)}
-The following figures are prepared to host final screenshots. If an image is not available yet, a placeholder box is rendered and compilation still succeeds.
-
-\begin{figure}[h!]
+\begin{figure}[H]
     \centering
-    \IfFileExists{images/streamlit_home.png}{%
-        \includegraphics[width=0.95\textwidth]{images/streamlit_home.png}
+    \IfFileExists{images/streamlit_customer_view_overview.png}{%
+        \includegraphics[width=0.92\textwidth]{images/streamlit_customer_view_overview.png}
     }{%
-        \fbox{\parbox{0.9\textwidth}{\centering Insert screenshot: Home dashboard (Home.py)}}
+        \fbox{\parbox{0.85\textwidth}{\centering Insert screenshot: Customer View Overview}}
     }
-    \caption{Streamlit home page and operational overview.}
+    \caption{Customer-view overview page used to browse core tables and operational records.}
 \end{figure}
 
-\begin{figure}[h!]
+\subsubsection{Operation 1: Register New Customer}
+This interface is used to create a new customer profile and automatically generate the corresponding unique identifier. The operator can choose whether the customer is an individual or a company and fill in the required personal or fiscal information together with the main contact details.
+
+\begin{figure}[H]
     \centering
-    \IfFileExists{images/streamlit_login.png}{%
-        \includegraphics[width=0.95\textwidth]{images/streamlit_login.png}
+    \IfFileExists{images/streamlit_op1_register_customer.png}{%
+        \includegraphics[width=0.72\textwidth]{images/streamlit_op1_register_customer.png}
     }{%
-        \fbox{\parbox{0.9\textwidth}{\centering Insert screenshot: Login page (1\_Login.py)}}
+        \fbox{\parbox{0.8\textwidth}{\centering Insert screenshot: Operation 1 - Register New Customer}}
     }
-    \caption{Authentication page with connection test tools.}
+    \caption{Interface for customer registration.}
 \end{figure}
 
-\begin{figure}[h!]
+\subsubsection{Operation 2: Record New Booking}
+This page allows office personnel to register a booking for a previously selected customer and event location. The form collects the service category, scheduling details, duration, cost, and team assignment so that each booking is fully connected to the operational database.
+
+\begin{figure}[H]
     \centering
-    \IfFileExists{images/streamlit_tables_views.png}{%
-        \includegraphics[width=0.95\textwidth]{images/streamlit_tables_views.png}
+    \IfFileExists{images/streamlit_op2_record_booking.png}{%
+        \includegraphics[width=0.72\textwidth]{images/streamlit_op2_record_booking.png}
     }{%
-        \fbox{\parbox{0.9\textwidth}{\centering Insert screenshot: Tables and views browser (2\_Tables.py)}}
+        \fbox{\parbox{0.8\textwidth}{\centering Insert screenshot: Operation 2 - Record New Booking}}
     }
-    \caption{Operational tables and reporting views browser.}
+    \caption{Interface for booking placement and assignment.}
 \end{figure}
 
-\begin{figure}[h!]
+\subsubsection{Operation 3: Register New Event Location}
+This operation is dedicated to the insertion of a new event location associated with an existing customer. The operator provides the full address and the technical attributes needed by the system, such as setup time estimate and supported equipment capacity.
+
+\begin{figure}[H]
     \centering
-    \IfFileExists{images/streamlit_customer_ops.png}{%
-        \includegraphics[width=0.95\textwidth]{images/streamlit_customer_ops.png}
+    \IfFileExists{images/streamlit_op3_register_location.png}{%
+        \includegraphics[width=0.72\textwidth]{images/streamlit_op3_register_location.png}
     }{%
-        \fbox{\parbox{0.9\textwidth}{\centering Insert screenshot: Customer operations (OP1, OP2, OP3)}}
+        \fbox{\parbox{0.8\textwidth}{\centering Insert screenshot: Operation 3 - Register New Event Location}}
     }
-    \caption{Customer-side workflows: onboarding, booking insertion, and location registration.}
+    \caption{Interface for event-location registration.}
 \end{figure}
 
-\begin{figure}[h!]
+\clearpage
+\subsection{Team View}
+This viewpoint focuses on the operational dimension of the \textbf{Setup Team}. It allows users to inspect which team handled a given event location, together with the associated office, booking details, and local performance indicators. In this way, the interface supports direct verification of field operations and helps reconstruct the operational context of each installation.
+
+A second component of this viewpoint is the \textbf{Location Activity Report}, which ranks event locations according to the number of bookings handled. This page transforms operational records into a compact reporting tool, making it easier to identify the most active locations, compare demand across sites, and export the results for further analysis.
+
+\begin{figure}[H]
     \centering
-    \IfFileExists{images/streamlit_team_ops.png}{%
-        \includegraphics[width=0.95\textwidth]{images/streamlit_team_ops.png}
+    \IfFileExists{images/streamlit_team_view_overview.png}{%
+        \includegraphics[width=0.92\textwidth]{images/streamlit_team_view_overview.png}
     }{%
-        \fbox{\parbox{0.9\textwidth}{\centering Insert screenshot: Team operations (OP4, OP5)}}
+        \fbox{\parbox{0.85\textwidth}{\centering Insert screenshot: Team View Overview}}
     }
-    \caption{Team and location activity analysis workflows.}
+    \caption{Team-view overview page used to inspect teams, members, and related operational tables.}
 \end{figure}
 
-\begin{figure}[h!]
+\subsubsection{Operation 4: View Team at Event Location}
+This interface reconstructs the operational context of a selected event location. It shows the bookings linked to that site, the responsible office, the assigned setup team, and a compact summary of the local activity indicators useful for inspection.
+
+\begin{figure}[H]
     \centering
-    \IfFileExists{images/streamlit_dashboard.png}{%
-        \includegraphics[width=0.95\textwidth]{images/streamlit_dashboard.png}
+    \IfFileExists{images/streamlit_op4_view_team_location.png}{%
+        \includegraphics[width=0.72\textwidth]{images/streamlit_op4_view_team_location.png}
     }{%
-        \fbox{\parbox{0.9\textwidth}{\centering Insert screenshot: Manager dashboard (OP6)}}
+        \fbox{\parbox{0.8\textwidth}{\centering Insert screenshot: Operation 4 - View Team at Event Location}}
     }
-    \caption{Manager dashboard with KPI, trend, and distribution analytics.}
+    \caption{Operational view for team inspection at a selected location.}
 \end{figure}
 
-\subsection{Known Limitations and Future Improvements}
+\subsubsection{Operation 5: Location Activity Report}
+This reporting page ranks event locations by the number of recorded bookings and summarizes the corresponding workload. The resulting table supports comparison across sites and can be exported for managerial or operational review.
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{images/streamlit_op5_location_activity.png}{%
+        \includegraphics[width=0.72\textwidth]{images/streamlit_op5_location_activity.png}
+    }{%
+        \fbox{\parbox{0.8\textwidth}{\centering Insert screenshot: Operation 5 - Location Activity Report}}
+    }
+    \caption{Operational view for location activity analysis and ranking.}
+\end{figure}
+
+\clearpage
+\subsection{Manager View}
+The final managerial page provides a compact analytical cockpit built on top of the operational database. A performance area displays teams ordered by their score and installation volume, making comparative evaluation immediate. At the top of the dashboard, several global indicators are shown, including:
+
 \begin{itemize}
-    \item The booking object does not currently store a direct \texttt{PlacedBy} reference; customer linkage is obtained through \texttt{AtLocation -> OwnerRef}.
-    \item Member analytics requiring cross-team historical views may require additional reporting structures beyond the in-row \texttt{Member\_VA} model.
-    \item The central-office/team assignment strategy is deterministic but can be extended with workload balancing policies beyond the current least-loaded heuristic.
+    \item the total number of bookings tracked by the system;
+    \item the total operational revenue generated;
+    \item the average booking duration across the dataset;
+    \item the number of active offices involved in the filtered result set.
 \end{itemize}
 
-\section{Conclusion}
-The final project delivers a coherent Oracle object-relational schema and a working Streamlit front-end. The report now reflects the implemented solution while clearly separating current behavior from planned enhancements.
+The dashboard also includes historical demand charts, province-based distributions, booking-modality statistics, and office-level summary tables. Altogether, this view supports a broader interpretation of organizational performance and helps identify the most active teams, the most relevant operational areas, and the main historical demand trends.
+
+\subsubsection{Operation 6: Manager Dashboard}
+This page offers a consolidated analytical dashboard for supervisors and decision makers. It combines global KPIs, temporal trends, provincial distributions, and team-level comparisons in a single interface designed to support fast performance assessment.
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{images/streamlit_op6_manager_dashboard.png}{%
+        \includegraphics[width=0.78\textwidth]{images/streamlit_op6_manager_dashboard.png}
+    }{%
+        \fbox{\parbox{0.8\textwidth}{\centering Insert screenshot: Operation 6 - Manager Dashboard}}
+    }
+    \caption{Managerial dashboard with KPI indicators and historical trends.}
+\end{figure}
 
 \end{document}

@@ -113,6 +113,16 @@ else:
 
                 show_query(
                     connection,
+                    "ViewTeamMembers",
+                    """
+                    SELECT *
+                    FROM ViewTeamMembers
+                    ORDER BY TeamCode, MemberTaxCode
+                    """,
+                )
+
+                show_query(
+                    connection,
                     "Equipment_TAB",
                     """
                     SELECT ItemCode, Description, UnitsAvailable
@@ -180,7 +190,6 @@ else:
             st.markdown('<div class="stageup-section-title" style="margin-top:1rem;">Reporting Views</div>', unsafe_allow_html=True)
             view_left, view_right = st.columns(2, gap="large")
             with view_left:
-                show_query(connection, "ViewTeamMembers", "SELECT * FROM ViewTeamMembers ORDER BY TeamCode")
                 show_query(connection, "ViewCustomerLocations", "SELECT * FROM ViewCustomerLocations ORDER BY CustomerCode")
                 show_query(connection, "ViewCompanyOffices", "SELECT * FROM ViewCompanyOffices ORDER BY OfficeName")
             with view_right:

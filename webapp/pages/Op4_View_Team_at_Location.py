@@ -119,37 +119,8 @@ else:
                                 "Members": team[3],
                                 "Region": team[4]
                             })
+
                         st.dataframe(team_data, width='stretch')
-
-                        # Show team members for first team
-                        if team_data:
-                            team_code = teams[0][0]
-                            st.subheader(f"👤 Team Members (Team {team_code})")
-                            
-                            with connection.cursor() as cursor:
-                                cursor.execute("""
-                                    SELECT m.TaxCode,
-                                           m.FirstName,
-                                           m.LastName,
-                                           m.BirthDate
-                                    FROM TABLE(
-                                        SELECT CAST(t.Members AS Member_VA) FROM Team_TAB t WHERE t.TeamCode = :1
-                                    ) m
-                                """, [team_code])
-                                members = cursor.fetchall()
-
-                            if members:
-                                member_data = []
-                                for member in members:
-                                    member_data.append({
-                                        "Tax Code": member[0],
-                                        "First Name": member[1],
-                                        "Last Name": member[2],
-                                        "Birth Date": member[3]
-                                    })
-                                st.dataframe(member_data, width='stretch')
-                            else:
-                                st.info("No team members assigned yet.")
                     else:
                         st.info(f"No teams found for office {office_name}")
 
