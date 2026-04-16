@@ -11,6 +11,15 @@
 
 This repository implements an Oracle object-relational event setup system with a Streamlit demo app.
 
+The Streamlit webapp is a multi-page operational console aligned with the exam operations:
+
+- OP1: Register New Customer
+- OP2: Record New Booking
+- OP3: Register Event Location
+- OP4: View Team at Location
+- OP5: Location Activity Report
+- OP6: Manager Dashboard
+
 The current implementation is based on these core entities:
 
 - Office_TAB
@@ -52,7 +61,7 @@ The current implementation is based on these core entities:
     ```
 2. Launch the Streamlit app:
     ```bash
-    streamlit run webapp/Home.py
+  python3 -m streamlit run webapp/Home.py
     ```
 3. Open your browser and go to the URL provided by Streamlit.
 
@@ -113,6 +122,7 @@ Triggers are defined in [scripts/04_triggers.sql](scripts/04_triggers.sql) and i
 - `TrgTeamMemberDates`: rejects future or missing birth dates for team members
 - `TrgBookingDates`: rejects bookings dated in the past
 - `TrgTeamMustHaveMembers`: prevents empty team member collections
+- `TrgCheckLocationCapacity`: blocks `Promotional` bookings on locations with capacity below threshold
 
 The following constraints are enforced at table level in [scripts/02_tables.sql](scripts/02_tables.sql):
 
@@ -126,7 +136,7 @@ See scripts/01_types.sql through scripts/07_triggertests.sql for full DDL, data 
 
 Below is a screenshot of the Streamlit demo application's home page:
 
-![Streamlit Demo Home Page](images/home.png)
+![Streamlit Demo Home Page](latex_report/images/streamlit_home.png)
 
 ## Login Page
 
@@ -137,13 +147,13 @@ To access the demo application, use credentials defined in your `.env` file:
 
 > **Tip:** If the current date from the database is displayed correctly in the demo app, your connection to the Oracle 21c database is working as expected.
 
-![Streamlit Demo Login Page](images/login.png)
+![Streamlit Demo Login Page](latex_report/images/streamlit_view_page.png)
 
 ## Tables Overview
 
 The following screenshot displays all database tables as shown in the demo application after automatic population by Docker:
 
-![Tables Overview](images/tables.png)
+![Tables Overview](latex_report/images/streamlit_tables_views.png)
 
 > If some tables appear empty, it means you logged in before the population process was completed. Please close the streamlit demo and do the whole procedure by the start.
 
@@ -159,6 +169,26 @@ The application exposes the following pages in webapp/pages:
 - Op4_View_Team_at_Location.py: operation 4 team-by-location analysis
 - Op5_Location_Activity_Report.py: operation 5 location activity analytics
 - Op6_Manager_Dashboard.py: manager dashboard with KPIs, trends, and scoreboards
+
+## Streamlit Operations Gallery
+
+### OP1 - Register New Customer
+![OP1 Register New Customer](latex_report/images/streamlit_op1_register_customer.png)
+
+### OP2 - Record New Booking
+![OP2 Record New Booking](latex_report/images/streamlit_op2_record_booking.png)
+
+### OP3 - Register Event Location
+![OP3 Register Event Location](latex_report/images/streamlit_op3_register_location.png)
+
+### OP4 - View Team at Location
+![OP4 View Team at Location](latex_report/images/streamlit_op4_view_team_location.png)
+
+### OP5 - Location Activity Report
+![OP5 Location Activity Report](latex_report/images/streamlit_op5_location_activity.png)
+
+### OP6 - Manager Dashboard
+![OP6 Manager Dashboard](latex_report/images/streamlit_op6_manager_dashboard.png)
 
 ## Notes
 
