@@ -78,20 +78,6 @@ else:
                         st.error("Street and City are required!")
                         st.stop()
 
-                    # Get customer reference
-                    with connection.cursor() as ref_cursor:
-                        ref_cursor.execute(
-                            "SELECT REF(c) FROM Customer_TAB c WHERE CustomerCode = :1",
-                            [selected_customer_code]
-                        )
-                        customer_ref_result = ref_cursor.fetchone()
-                        
-                        if not customer_ref_result:
-                            st.error(f"Customer {selected_customer_code} not found!")
-                            st.stop()
-                        
-                        customer_ref = customer_ref_result[0]
-
                     # Insert location
                     cursor.execute("""
                         INSERT INTO Location_TAB 
@@ -101,7 +87,7 @@ else:
                             Address_t(:2, :3, :4, SUBSTR(:5, 1, 30), SUBSTR(:6, 1, 5)),
                             :7,
                             :8,
-                            :9
+                            (SELECT REF(c) FROM Customer_TAB c WHERE c.CustomerCode = :9)
                         )
                     """, [
                         next_loc_code,
@@ -112,7 +98,7 @@ else:
                         province,
                         setup_time,
                         equipment_capacity,
-                        customer_ref
+                        selected_customer_code
                     ])
 
                     connection.commit()

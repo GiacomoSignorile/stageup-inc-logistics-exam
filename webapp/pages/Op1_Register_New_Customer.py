@@ -33,6 +33,15 @@ else:
 
         st.info(f"Next Customer Code: **{next_code}**")
 
+        st.subheader("📍 Event Locations (Optional)")
+        num_locations = st.number_input(
+            "Number of Event Locations to Add",
+            min_value=0,
+            max_value=5,
+            value=0,
+            key="num_locations_op1"
+        )
+
         # Main form for customer registration
         with st.form("register_customer_form"):
             st.subheader("📋 Customer Information")
@@ -56,9 +65,6 @@ else:
                 city = st.text_input("City", max_chars=30, value="Bari")
             
             province = st.text_input("Province (2 chars)", max_chars=5, value="BA")
-
-            st.subheader("📍 Event Locations (Optional)")
-            num_locations = st.number_input("Number of Event Locations to Add", min_value=0, max_value=5, value=0)
 
             locations = []
             if num_locations > 0:
@@ -143,11 +149,6 @@ else:
                             except:
                                 next_loc_code = f"L{idx + 1:04d}"
 
-                        # Get customer REF for location owner
-                        with connection.cursor() as ref_csr:
-                            ref_csr.execute("SELECT REF(c) FROM Customer_TAB c WHERE CustomerCode = :1", [next_code])
-                            customer_ref = ref_csr.fetchone()[0]
-
                         cursor.execute("""
                             INSERT INTO Location_TAB 
                             (LocationCode, Address, SetupTimeEstimate, EquipmentCapacity, OwnerRef)
@@ -156,7 +157,7 @@ else:
                                 Address_t(:2, :3, :4, SUBSTR(:5, 1, 30), SUBSTR(:6, 1, 5)),
                                 :7,
                                 :8,
-                                :9
+                                (SELECT REF(c) FROM Customer_TAB c WHERE c.CustomerCode = :9)
                             )
                         """, [
                             next_loc_code,
@@ -167,7 +168,7 @@ else:
                             loc['province'],
                             loc['setup_time'],
                             loc['capacity'],
-                            customer_ref
+                            next_code
                         ])
 
                     connection.commit()

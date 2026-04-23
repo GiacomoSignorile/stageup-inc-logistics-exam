@@ -98,37 +98,27 @@ else:
                         st.error("Location code is required!")
                         st.stop()
 
-                    # Get location and office references
-                    with connection.cursor() as ref_cursor:
-                        # Get location reference
-                        ref_cursor.execute(
-                            "SELECT REF(l) FROM Location_TAB l WHERE LocationCode = :1",
-                            [location_code]
-                        )
-                        loc_ref_result = ref_cursor.fetchone()
-                        
-                        if not loc_ref_result:
-                            st.error(f"Location {location_code} not found!")
-                            st.stop()
-                        
-                        location_ref = loc_ref_result[0]
-
-                        # Get a random office (or central office)
-                        ref_cursor.execute("""
-                            SELECT REF(o) FROM Office_TAB o 
-                            WHERE ROWNUM = 1
-                        """)
-                        office_ref_result = ref_cursor.fetchone()
-                        if not office_ref_result:
-                            st.error("No offices found in database!")
-                            st.stop()
-                        office_ref = office_ref_result[0]
+                    # Ensure at least one office exists before the insert subquery.
+                    cursor.execute("SELECT COUNT(*) FROM Office_TAB")
+                    office_count = cursor.fetchone()[0]
+                    if office_count == 0:
+                        st.error("No offices found in database!")
+                        st.stop()
 
                     # Insert booking
                     cursor.execute("""
                         INSERT INTO Booking_TAB 
                         (BookingID, BookingType, BookingDate, Duration, TotalCost, PlacementMode, AtLocation, HandledBy)
-                        VALUES (:1, :2, :3, :4, :5, :6, :7, :8)
+                        VALUES (
+                            :1,
+                            :2,
+                            :3,
+                            :4,
+                            :5,
+                            :6,
+                            (SELECT REF(l) FROM Location_TAB l WHERE l.LocationCode = :7),
+                            (SELECT REF(o) FROM Office_TAB o WHERE ROWNUM = 1)
+                        )
                     """, [
                         next_booking_id,
                         booking_type,
@@ -136,8 +126,7 @@ else:
                         duration,
                         total_cost,
                         placement_mode,
-                        location_ref,
-                        office_ref
+                        location_code
                     ])
 
                     connection.commit()
